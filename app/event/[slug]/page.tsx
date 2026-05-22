@@ -32,6 +32,15 @@ export default function EventCapturePage() {
   const [submitting, setSubmitting] = useState(false);
   const [submittedOk, setSubmittedOk] = useState(false);
   const [demo, setDemo] = useState<boolean>(true);
+  const [inIframe, setInIframe] = useState(false);
+
+  useEffect(() => {
+    try {
+      setInIframe(window.self !== window.top);
+    } catch {
+      setInIframe(true);
+    }
+  }, []);
 
   // demo flag init
   useEffect(() => {
@@ -263,6 +272,26 @@ export default function EventCapturePage() {
             <p className="mt-10 text-xs text-ink/50 leading-relaxed">
               Your captures will be shared with the couple.
             </p>
+
+            {inIframe && (
+              <div className="mt-8 border border-gold/40 bg-gold/10 p-4 text-left rounded-sm">
+                <p className="text-[10px] uppercase tracking-widest text-gold mb-2">
+                  preview notice
+                </p>
+                <p className="text-xs text-ink/75 leading-relaxed">
+                  Cameras are blocked inside embedded previews (StackBlitz, CodeSandbox).
+                  Open this page in a new tab to use the camera.
+                </p>
+                <button
+                  onClick={() =>
+                    window.open(window.location.href, '_blank', 'noopener,noreferrer')
+                  }
+                  className="mt-3 text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
+                >
+                  open in a new tab →
+                </button>
+              </div>
+            )}
 
             <button
               onClick={() => setStage('capture')}

@@ -14,6 +14,51 @@ type Props = {
   onWebGLUnavailable?: () => void;
 };
 
+type CameraError = {
+  kind:
+    | 'permission'
+    | 'no-camera'
+    | 'in-use'
+    | 'overconstrained'
+    | 'insecure'
+    | 'unsupported'
+    | 'iframe-blocked'
+    | 'autoplay'
+    | 'unknown';
+  message: string;
+};
+
+function classifyError(e: any): CameraError {
+  const name = e?.name as string | undefined;
+  const msg = String(e?.message || '');
+  if (name === 'NotAllowedError' || /denied|permission/i.test(msg)) {
+    return {
+      kind: 'permission',
+      message:
+        'Camera permission was denied. Tap "AA" in the Safari address bar → Website Settings → Camera → Allow, then reload.',
+    };
+  }
+  if (name === 'NotFoundError' || /not.?found/i.test(msg)) {
+    return { kind: 'no-camera', message: 'No camera was found on this device.' };
+  }
+  if (name === 'NotReadableError' || /in use|busy/i.test(msg)) {
+    return {
+      kind: 'in-use',
+      message: 'The camera is being used by another app. Close other apps using the camera and try again.',
+    };
+  }
+  if (name === 'OverconstrainedError') {
+    return { kind: 'overconstrained', message: 'No camera matches the requested settings. Try flipping the camera.' };
+  }
+  if (name === 'SecurityError') {
+    return {
+      kind: 'insecure',
+      message: 'Camera blocked because the page is not on HTTPS or is in a restricted frame.',
+    };
+  }
+  return { kind: 'unknown', message: msg || 'Could not access the camera.' };
+}
+
 const MAX_VIDEO_SECONDS = 15;
 const MAX_VIDEO_HEIGHT = 720;
 
@@ -47,9 +92,21 @@ export default function FilteredCamera({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const videoStopTimerRef = useRef<number | null>(null);
+  const videoPlayingRef = useRef<boolean>(false);
 
   const [glReady, setGlReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<CameraError | null>(null);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const [needsTap, setNeedsTap] = useState(false);
+  const [inIframe, setInIframe] = useState(false);
+
+  useEffect(() => {
+    try {
+      setInIframe(window.self !== window.top);
+    } catch {
+      setInIframe(true); // cross-origin throws — that means we're in a frame
+    }
+  }, []);
 
   // --- helpers ----------------------------------------------------
 
@@ -148,7 +205,10 @@ export default function FilteredCamera({
       (canvas.getContext('webgl', { preserveDrawingBuffer: true }) as WebGLRenderingContext | null) ||
       (canvas.getContext('experimental-webgl', { preserveDrawingBuffer: true }) as WebGLRenderingContext | null);
     if (!gl) {
-      setError('WebGL not available — filters disabled on this device.');
+      setError({
+        kind: 'unsupported',
+        message: 'WebGL is not available on this device — filters are disabled.',
+      });
       onWebGLUnavailable?.();
       return;
     }
@@ -174,12 +234,26 @@ export default function FilteredCamera({
 
     async function open() {
       try {
+        if (typeof window === 'undefined') return;
+        if (!window.isSecureContext) {
+          setError({
+            kind: 'insecure',
+            message: 'Camera requires HTTPS. Open this site over https:// (or use ngrok / Vercel).',
+          });
+          return;
+        }
         if (!navigator.mediaDevices?.getUserMedia) {
-          setError('Camera API not supported in this browser.');
+          setError({
+            kind: 'unsupported',
+            message: 'This browser does not expose getUserMedia. Try Safari or Chrome.',
+          });
           return;
         }
         // stop previous
         streamRef.current?.getTracks().forEach((t) => t.stop());
+        setError(null);
+        videoPlayingRef.current = false;
+        setVideoPlaying(false);
 
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
@@ -200,11 +274,35 @@ export default function FilteredCamera({
         v.muted = true;
         v.autoplay = true;
         v.srcObject = stream;
-        await v.play().catch(() => {});
+        try {
+          await v.play();
+          setVideoPlaying(true);
+          setNeedsTap(false);
+        } catch (playErr) {
+          console.warn('video.play() rejected — needs user gesture', playErr);
+          setNeedsTap(true);
+        }
         videoRef.current = v;
       } catch (e: any) {
         console.warn('camera open failed:', e);
-        setError(e?.message || 'Could not access camera. Check browser permissions.');
+        const classified = classifyError(e);
+        // when blocked inside an iframe (StackBlitz/CodeSandbox preview),
+        // permission errors usually mean the parent frame stripped permission
+        let kind = classified.kind;
+        try {
+          if (kind === 'permission' && window.self !== window.top) {
+            kind = 'iframe-blocked';
+          }
+        } catch {
+          kind = 'iframe-blocked';
+        }
+        setError({
+          kind,
+          message:
+            kind === 'iframe-blocked'
+              ? 'Camera is blocked inside this embedded preview. Open the preview in a new tab.'
+              : classified.message,
+        });
       }
     }
 
@@ -248,6 +346,10 @@ export default function FilteredCamera({
           gl.uniform2f(uRes, vw, vh);
 
           gl.drawArrays(gl.TRIANGLES, 0, 6);
+          if (!videoPlayingRef.current) {
+            videoPlayingRef.current = true;
+            setVideoPlaying(true);
+          }
         }
       }
       rafRef.current = requestAnimationFrame(draw);
@@ -359,6 +461,27 @@ export default function FilteredCamera({
     };
   }, [capturePhoto, onPhotoCaptured]);
 
+  function openInNewTab() {
+    try {
+      window.open(window.location.href, '_blank', 'noopener,noreferrer');
+    } catch {
+      /* noop */
+    }
+  }
+
+  function tryEnableVideo() {
+    const v = videoRef.current;
+    if (!v) return;
+    v.play()
+      .then(() => {
+        setVideoPlaying(true);
+        setNeedsTap(false);
+      })
+      .catch((e) => {
+        console.warn('manual play failed:', e);
+      });
+  }
+
   return (
     <div className="relative w-full h-full bg-black overflow-hidden">
       <canvas
@@ -368,9 +491,58 @@ export default function FilteredCamera({
       />
       {/* film grain overlay */}
       <div className="grain absolute inset-0 pointer-events-none" />
+
+      {/* video-playback gesture required (rare on iOS in iframes) */}
+      {!error && needsTap && (
+        <button
+          onClick={tryEnableVideo}
+          className="absolute inset-0 grid place-items-center bg-black/60 text-cream"
+        >
+          <span className="font-serif italic text-2xl">tap to start camera</span>
+        </button>
+      )}
+
+      {/* loading hint until the first frame is drawn */}
+      {!error && !needsTap && !videoPlaying && (
+        <div className="absolute inset-0 grid place-items-center pointer-events-none">
+          <p className="font-serif italic text-cream/70 text-lg">opening camera…</p>
+        </div>
+      )}
+
       {error && (
-        <div className="absolute inset-x-0 top-0 p-4 text-xs text-cream/90 text-center bg-black/60">
-          {error}
+        <div className="absolute inset-0 grid place-items-center bg-black/85 p-6 text-center">
+          <div className="max-w-sm">
+            <p className="font-serif italic text-cream text-2xl">
+              {error.kind === 'iframe-blocked'
+                ? 'camera blocked in preview'
+                : error.kind === 'permission'
+                ? 'camera permission needed'
+                : error.kind === 'insecure'
+                ? 'https required'
+                : 'camera unavailable'}
+            </p>
+            <p className="mt-4 text-cream/75 text-sm leading-relaxed">
+              {error.message}
+            </p>
+
+            {(error.kind === 'iframe-blocked' || inIframe) && (
+              <button
+                onClick={openInNewTab}
+                className="mt-6 bg-gold text-ink px-5 py-3 text-xs uppercase tracking-widest"
+              >
+                open in a new tab
+              </button>
+            )}
+
+            {error.kind !== 'iframe-blocked' && (
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-6 ml-2 border border-cream/40 text-cream px-5 py-3 text-xs uppercase tracking-widest"
+              >
+                try again
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
