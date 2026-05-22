@@ -1,4 +1,4 @@
-import BirdLogo from '@/components/BirdLogo';
+import Logo from '@/components/Logo';
 import { isAdminAuthed } from '../actions';
 import LoginForm from '../LoginForm';
 import AdminEventDetail from './AdminEventDetail';
@@ -9,7 +9,7 @@ export default async function AdminEventPage({ params }: { params: { slug: strin
   return (
     <main className="min-h-screen">
       <header className="px-6 pt-8 flex items-center gap-3">
-        <BirdLogo className="h-5 w-8 text-ink" />
+        <Logo className="h-5 w-8 text-ink" />
         <span className="text-[11px] tracking-widest uppercase text-ink/70">
           Golden Glance · Admin
         </span>

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import BirdLogo from '@/components/BirdLogo';
+import Logo from '@/components/Logo';
 import FilteredCamera from '@/components/FilteredCamera';
 import FilterSelector from '@/components/FilterSelector';
 import CaptureButton from '@/components/CaptureButton';
@@ -229,7 +229,7 @@ export default function EventCapturePage() {
     return (
       <main className="min-h-screen flex flex-col">
         <header className="px-6 pt-8 flex items-center gap-3">
-          <BirdLogo className="h-5 w-8 text-ink" />
+          <Logo className="h-5 w-8 text-ink" />
           <span className="text-[11px] tracking-widest uppercase text-ink/60">
             Guest Cam
           </span>
@@ -385,7 +385,7 @@ export default function EventCapturePage() {
           ← exit
         </button>
         <div className="flex items-center gap-2">
-          <BirdLogo className="h-4 w-6 text-cream" />
+          <Logo className="h-4 w-6 text-cream" />
           <span className="text-[10px] uppercase tracking-widest text-cream/70">
             {event.couple_names}
           </span>

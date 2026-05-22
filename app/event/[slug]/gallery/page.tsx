@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import BirdLogo from '@/components/BirdLogo';
+import Logo from '@/components/Logo';
 import Gallery from '@/components/Gallery';
 import {
   getEventBySlug,
@@ -128,7 +128,7 @@ export default function EventGalleryPage() {
   return (
     <main className="min-h-screen">
       <header className="px-6 pt-8 pb-6 flex items-center gap-3">
-        <BirdLogo className="h-5 w-8 text-ink" />
+        <Logo className="h-5 w-8 text-ink" />
         <div className="flex-1">
           <p className="text-[10px] uppercase tracking-widest text-ink/50">
             live gallery
