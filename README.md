@@ -70,8 +70,12 @@ create table if not exists public.events (
   couple_names text not null,
   wedding_date date not null,
   welcome_message text,
+  tier text not null default 'signature' check (tier in ('glimpse', 'signature', 'studio')),
   created_at timestamptz not null default now()
 );
+
+-- if you already created the events table above before this column existed:
+-- alter table public.events add column if not exists tier text not null default 'signature';
 
 -- submissions
 create table if not exists public.submissions (
@@ -269,6 +273,8 @@ Supabase env vars. The `/event/demo` slug always works regardless.
 │   │   └── [slug]/
 │   │       ├── gallery/page.tsx
 │   │       └── page.tsx
+│   ├── pricing/
+│   │   └── page.tsx
 │   ├── layout.tsx
 │   └── page.tsx
 ├── components/
@@ -282,6 +288,7 @@ Supabase env vars. The `/event/demo` slug always works regardless.
 │   ├── demo-store.ts
 │   ├── filters.ts
 │   ├── supabase.ts
+│   ├── tiers.ts
 │   └── zip.ts
 ├── styles/
 │   └── globals.css

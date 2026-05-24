@@ -5,13 +5,15 @@ import { FILTERS, FilterId } from '@/lib/filters';
 type Props = {
   active: FilterId;
   onSelect: (id: FilterId) => void;
+  allowed?: FilterId[];
 };
 
-export default function FilterSelector({ active, onSelect }: Props) {
+export default function FilterSelector({ active, onSelect, allowed }: Props) {
+  const visible = allowed ? FILTERS.filter((f) => allowed.includes(f.id)) : FILTERS;
   return (
     <div className="w-full">
       <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 py-3">
-        {FILTERS.map((f) => {
+        {visible.map((f) => {
           const isActive = f.id === active;
           return (
             <button

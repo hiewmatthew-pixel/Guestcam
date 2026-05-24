@@ -10,6 +10,7 @@ import CaptureButton from '@/components/CaptureButton';
 import { FILTERS, FilterId } from '@/lib/filters';
 import { addSubmission, getEventBySlug, isDemoMode, setDemoMode } from '@/lib/demo-store';
 import { getSupabase, isSupabaseConfigured, type EventRow } from '@/lib/supabase';
+import { getTier } from '@/lib/tiers';
 
 type Stage = 'welcome' | 'capture' | 'review';
 
@@ -60,6 +61,7 @@ export default function EventCapturePage() {
           couple_names: 'Sarah & James',
           wedding_date: new Date().toISOString().slice(0, 10),
           welcome_message: null,
+          tier: 'signature',
           created_at: new Date().toISOString(),
         };
         if (!cancelled) {
@@ -113,6 +115,20 @@ export default function EventCapturePage() {
       return event.wedding_date;
     }
   }, [event]);
+
+  const tier = useMemo(() => getTier(event?.tier), [event]);
+
+  // keep filter/mode within the tier's allowed feature set
+  useEffect(() => {
+    if (!event) return;
+    if (!tier.features.filters.includes(filter)) {
+      setFilter(tier.features.filters[0]);
+    }
+    if (mode === 'video' && !tier.features.allowVideo) {
+      setMode('photo');
+      setRecording(false);
+    }
+  }, [event, tier, filter, mode]);
 
   function onCaptureTap() {
     if (mode === 'photo') {
@@ -422,28 +438,34 @@ export default function EventCapturePage() {
       </div>
 
       <div className="bg-ink/95 pb-6">
-        <FilterSelector active={filter} onSelect={setFilter} />
+        <FilterSelector active={filter} onSelect={setFilter} allowed={tier.features.filters} />
 
         <div className="px-6 pt-2 flex items-center justify-between">
-          {/* mode toggle */}
-          <div className="flex gap-1 text-[10px] uppercase tracking-widest">
-            <button
-              onClick={() => {
-                setMode('photo');
-                setRecording(false);
-              }}
-              className={mode === 'photo' ? 'text-gold' : 'text-cream/60'}
-            >
+          {/* mode toggle (video hidden on photo-only tiers) */}
+          {tier.features.allowVideo ? (
+            <div className="flex gap-1 text-[10px] uppercase tracking-widest">
+              <button
+                onClick={() => {
+                  setMode('photo');
+                  setRecording(false);
+                }}
+                className={mode === 'photo' ? 'text-gold' : 'text-cream/60'}
+              >
+                photo
+              </button>
+              <span className="text-cream/30">/</span>
+              <button
+                onClick={() => setMode('video')}
+                className={mode === 'video' ? 'text-gold' : 'text-cream/60'}
+              >
+                video
+              </button>
+            </div>
+          ) : (
+            <span className="text-[10px] uppercase tracking-widest text-cream/40">
               photo
-            </button>
-            <span className="text-cream/30">/</span>
-            <button
-              onClick={() => setMode('video')}
-              className={mode === 'video' ? 'text-gold' : 'text-cream/60'}
-            >
-              video
-            </button>
-          </div>
+            </span>
+          )}
 
           <CaptureButton
             mode={mode}

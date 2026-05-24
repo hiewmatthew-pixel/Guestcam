@@ -38,6 +38,7 @@ export default function EventGalleryPage() {
           couple_names: 'Sarah & James',
           wedding_date: new Date().toISOString().slice(0, 10),
           welcome_message: null,
+          tier: 'signature',
           created_at: new Date().toISOString(),
         };
         setEvent(demoEvent);

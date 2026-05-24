@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   createEvent,
@@ -14,6 +15,7 @@ import {
   isSupabaseConfigured,
   type EventRow,
 } from '@/lib/supabase';
+import { DEFAULT_TIER, TIER_LIST, TierId, formatPriceCAD, getTier } from '@/lib/tiers';
 
 function toSlug(s: string) {
   return s
@@ -24,11 +26,16 @@ function toSlug(s: string) {
 }
 
 export default function AdminEventList() {
+  const searchParams = useSearchParams();
+  const initialTier = (searchParams?.get('tier') as TierId | null) ?? DEFAULT_TIER;
   const [events, setEvents] = useState<EventRow[]>([]);
   const [demo, setDemo] = useState<boolean>(true);
   const [coupleNames, setCoupleNames] = useState('');
   const [weddingDate, setWeddingDate] = useState('');
   const [welcome, setWelcome] = useState('');
+  const [tier, setTier] = useState<TierId>(
+    TIER_LIST.some((t) => t.id === initialTier) ? initialTier : DEFAULT_TIER,
+  );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -64,6 +71,7 @@ export default function AdminEventList() {
           couple_names: coupleNames.trim(),
           wedding_date: weddingDate,
           welcome_message: welcome.trim() || null,
+          tier,
         });
       } else {
         const sb = getSupabase()!;
@@ -72,12 +80,14 @@ export default function AdminEventList() {
           couple_names: coupleNames.trim(),
           wedding_date: weddingDate,
           welcome_message: welcome.trim() || null,
+          tier,
         });
         if (error) throw error;
       }
       setCoupleNames('');
       setWeddingDate('');
       setWelcome('');
+      setTier(DEFAULT_TIER);
       await refresh();
     } catch (e: any) {
       setErr(e?.message || 'Could not create event.');
@@ -151,6 +161,41 @@ export default function AdminEventList() {
             className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2 resize-none"
           />
         </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-widest text-ink/60 mb-3">
+            tier
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {TIER_LIST.map((t) => {
+              const isActive = tier === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTier(t.id)}
+                  className={[
+                    'text-left rounded-sm border p-3 transition-colors',
+                    isActive
+                      ? 'border-gold bg-gold/10'
+                      : 'border-warm-gray-light hover:border-ink/30',
+                  ].join(' ')}
+                  aria-pressed={isActive}
+                >
+                  <p className="font-serif text-lg text-ink leading-none">{t.label}</p>
+                  <p className="font-serif italic text-sm text-ink/60 mt-1">
+                    {formatPriceCAD(t.price)}
+                  </p>
+                  <p className="text-[10px] text-ink/55 mt-2 leading-snug">
+                    {t.features.allowVideo ? 'photo + video' : 'photo only'} ·{' '}
+                    {t.features.filters.length === 5
+                      ? 'all filters'
+                      : `${t.features.filters.length} filters`}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {err && <p className="text-sm text-red-700">{err}</p>}
         <button
           disabled={busy}
@@ -166,28 +211,34 @@ export default function AdminEventList() {
             no events yet
           </li>
         )}
-        {events.map((ev) => (
-          <li key={ev.id} className="py-4 flex items-center gap-4">
-            <div className="flex-1">
-              <p className="font-serif italic text-xl">{ev.couple_names}</p>
-              <p className="text-[11px] uppercase tracking-widest text-ink/50">
-                {ev.wedding_date} · /{ev.slug}
-              </p>
-            </div>
-            <Link
-              href={`/admin/${ev.slug}`}
-              className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
-            >
-              open
-            </Link>
-            <button
-              onClick={() => handleDelete(ev.id)}
-              className="text-[10px] uppercase tracking-widest text-ink/50"
-            >
-              delete
-            </button>
-          </li>
-        ))}
+        {events.map((ev) => {
+          const t = getTier(ev.tier);
+          return (
+            <li key={ev.id} className="py-4 flex items-center gap-4">
+              <div className="flex-1">
+                <p className="font-serif italic text-xl">{ev.couple_names}</p>
+                <p className="text-[11px] uppercase tracking-widest text-ink/50">
+                  {ev.wedding_date} · /{ev.slug}
+                </p>
+              </div>
+              <span className="text-[10px] uppercase tracking-widest border border-warm-gray-light text-ink/60 px-2 py-1 rounded-sm">
+                {t.label}
+              </span>
+              <Link
+                href={`/admin/${ev.slug}`}
+                className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
+              >
+                open
+              </Link>
+              <button
+                onClick={() => handleDelete(ev.id)}
+                className="text-[10px] uppercase tracking-widest text-ink/50"
+              >
+                delete
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

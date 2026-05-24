@@ -26,12 +26,12 @@ export default function MarketingPage() {
             captured on their phones, gathered into one quiet, shared gallery.
           </p>
 
-          <div className="mt-12 flex items-center justify-center gap-6">
+          <div className="mt-12 flex items-center justify-center gap-6 flex-wrap">
             <Link
-              href="/admin"
+              href="/pricing"
               className="text-xs uppercase tracking-widest border-b border-gold pb-1 text-ink"
             >
-              create an event
+              see pricing
             </Link>
             <span className="text-ink/30">·</span>
             <Link
@@ -39,6 +39,13 @@ export default function MarketingPage() {
               className="text-xs uppercase tracking-widest text-ink/70 underline-offset-4 hover:underline"
             >
               try the camera
+            </Link>
+            <span className="text-ink/30">·</span>
+            <Link
+              href="/admin"
+              className="text-xs uppercase tracking-widest text-ink/70 underline-offset-4 hover:underline"
+            >
+              studio admin
             </Link>
           </div>
         </div>

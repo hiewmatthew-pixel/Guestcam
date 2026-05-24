@@ -62,6 +62,7 @@ export function createEvent(input: {
   couple_names: string;
   wedding_date: string;
   welcome_message?: string | null;
+  tier?: string;
 }): EventRow {
   const events = listEvents();
   if (events.some((e) => e.slug === input.slug)) {
@@ -73,6 +74,7 @@ export function createEvent(input: {
     couple_names: input.couple_names,
     wedding_date: input.wedding_date,
     welcome_message: input.welcome_message ?? null,
+    tier: input.tier ?? 'signature',
     created_at: new Date().toISOString(),
   };
   write(EVENTS_KEY, [row, ...events]);

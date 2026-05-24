@@ -17,6 +17,7 @@ import {
   type SubmissionRow,
 } from '@/lib/supabase';
 import { downloadAsZip } from '@/lib/zip';
+import { formatPriceCAD, getTier } from '@/lib/tiers';
 
 type Props = { slug: string };
 
@@ -91,6 +92,7 @@ export default function AdminEventDetail({ slug }: Props) {
   }, [slug]);
 
   const captureUrl = useMemo(() => (origin ? `${origin}/event/${slug}` : `/event/${slug}`), [origin, slug]);
+  const tier = useMemo(() => getTier(event?.tier), [event]);
 
   async function handleDownloadZip() {
     if (items.length === 0) return;
@@ -134,6 +136,13 @@ export default function AdminEventDetail({ slug }: Props) {
         {event.welcome_message && (
           <p className="mt-3 text-ink/60 max-w-xl">{event.welcome_message}</p>
         )}
+        <p className="mt-4 inline-flex items-center gap-2 text-[10px] uppercase tracking-widest border border-gold text-gold px-2 py-1 rounded-sm">
+          {tier.label} tier · {formatPriceCAD(tier.price)} ·{' '}
+          {tier.features.allowVideo ? 'photo + video' : 'photo only'} ·{' '}
+          {tier.features.filters.length === 5
+            ? 'all filters'
+            : `${tier.features.filters.length} filters`}
+        </p>
       </header>
 
       <div className="mt-10 grid md:grid-cols-2 gap-10 items-start">
