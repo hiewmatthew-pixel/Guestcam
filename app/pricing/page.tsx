@@ -2,7 +2,7 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { TIER_LIST, formatPriceCAD } from '@/lib/tiers';
 
-const INQUIRY_EMAIL = 'bookings@goldenglancestudio.com';
+const INQUIRY_EMAIL = 'hello@goldenglancestudio.com';
 
 function inquiryHref(tierLabel: string, price: number) {
   const subject = `Guest Cam · ${tierLabel}`;
