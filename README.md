@@ -1,4 +1,4 @@
-# Golden Glance · Guest Cam
+# Golden Glance · GlanceCam
 
 A small Progressive Web App for wedding guests: scan a QR code, capture
 film-look photos and short videos of the couple, and everything lands in one

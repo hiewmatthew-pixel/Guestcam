@@ -10,7 +10,7 @@ type Props = {
   fileName?: string;
 };
 
-export default function QRCode({ value, size = 240, label, fileName = 'guest-cam-qr.png' }: Props) {
+export default function QRCode({ value, size = 240, label, fileName = 'glancecam-qr.png' }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
 
   function downloadPng(highRes = 1024) {

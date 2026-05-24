@@ -14,7 +14,7 @@ export default function MarketingPage() {
       <section className="flex-1 grid place-items-center px-6 py-16">
         <div className="max-w-xl text-center">
           <p className="text-[11px] tracking-widest uppercase text-ink/50 mb-6">
-            Guest Cam
+            GlanceCam
           </p>
           <h1 className="font-serif italic text-5xl sm:text-6xl leading-[1.05] text-ink">
             your moments,

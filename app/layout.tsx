@@ -18,7 +18,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Golden Glance · Guest Cam',
+  title: 'Golden Glance · GlanceCam',
   description:
     'Capture film-look photos and short videos for the couple — one shared gallery, kept forever.',
 };

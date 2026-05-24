@@ -5,7 +5,7 @@ import { TIER_LIST, formatPriceCAD } from '@/lib/tiers';
 const INQUIRY_EMAIL = 'hello@goldenglancestudio.com';
 
 function inquiryHref(tierLabel: string, price: number) {
-  const subject = `Guest Cam · ${tierLabel}`;
+  const subject = `GlanceCam · ${tierLabel}`;
   const body =
     `Hello Golden Glance,\n\n` +
     `We'd love to book the ${tierLabel} tier (${formatPriceCAD(price)}) for our wedding.\n\n` +

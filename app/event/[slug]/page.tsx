@@ -248,7 +248,7 @@ export default function EventCapturePage() {
         <header className="px-6 pt-8 flex items-center gap-3">
           <Logo className="h-5 w-8 text-ink" />
           <span className="text-[11px] tracking-widest uppercase text-ink/60">
-            Guest Cam
+            GlanceCam
           </span>
           {slug === 'demo' && (
             <span className="ml-auto text-[10px] uppercase tracking-widest text-gold">
