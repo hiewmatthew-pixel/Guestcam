@@ -8,8 +8,10 @@ import {
   getEventBySlug,
   isDemoMode,
   listSubmissions,
+  rotateManageToken,
   subscribeToSubmissions,
 } from '@/lib/demo-store';
+import { generateManageToken } from '@/lib/tokens';
 import {
   getSupabase,
   isSupabaseConfigured,
@@ -92,7 +94,52 @@ export default function AdminEventDetail({ slug }: Props) {
   }, [slug]);
 
   const captureUrl = useMemo(() => (origin ? `${origin}/event/${slug}` : `/event/${slug}`), [origin, slug]);
+  const portalUrl = useMemo(
+    () =>
+      event
+        ? `${origin || ''}/event/${slug}/portal/${event.manage_token}`
+        : '',
+    [origin, slug, event],
+  );
   const tier = useMemo(() => getTier(event?.tier), [event]);
+
+  const [copied, setCopied] = useState<string | null>(null);
+  async function copy(kind: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(kind);
+      setTimeout(() => setCopied(null), 1500);
+    } catch {}
+  }
+
+  async function handleRotateToken() {
+    if (!event) return;
+    if (
+      !confirm(
+        'Rotate the couple’s portal link? Their current link will stop working. You’ll need to send them the new one.',
+      )
+    )
+      return;
+    // demo store path
+    const local = getEventBySlug(slug);
+    if (local) {
+      const updated = rotateManageToken(local.id);
+      if (updated) setEvent(updated);
+      return;
+    }
+    // supabase path
+    if (isSupabaseConfigured && !isDemoMode()) {
+      const sb = getSupabase()!;
+      const next = generateManageToken();
+      const { data, error } = await sb
+        .from('events')
+        .update({ manage_token: next })
+        .eq('id', event.id)
+        .select()
+        .single();
+      if (!error && data) setEvent(data as EventRow);
+    }
+  }
 
   async function handleDownloadZip() {
     if (items.length === 0) return;
@@ -177,6 +224,78 @@ export default function AdminEventDetail({ slug }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Share with couple ------------------------------------------------ */}
+      <section className="mt-16 border-t border-warm-gray-light pt-10">
+        <header className="flex items-baseline justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-ink/50">
+              share with the couple
+            </p>
+            <h2 className="font-serif italic text-2xl mt-1">two links, two purposes</h2>
+          </div>
+          <a
+            href={portalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
+          >
+            preview the couple’s view →
+          </a>
+        </header>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {/* Guest capture link (public) */}
+          <div className="border border-warm-gray-light p-5 rounded-sm">
+            <p className="text-[10px] uppercase tracking-widest text-ink/55">
+              for guests (public)
+            </p>
+            <p className="font-serif italic text-lg text-ink mt-1">
+              what the QR code points to
+            </p>
+            <p className="mt-3 font-mono text-xs text-ink/70 break-all bg-cream/70 p-2 rounded-sm border border-warm-gray-light">
+              {captureUrl}
+            </p>
+            <button
+              onClick={() => copy('capture', captureUrl)}
+              className="mt-3 text-[10px] uppercase tracking-widest border-b border-ink/40 pb-0.5"
+            >
+              {copied === 'capture' ? 'copied ✦' : 'copy link'}
+            </button>
+          </div>
+
+          {/* Couple's portal (private) */}
+          <div className="border border-gold/60 bg-gold/5 p-5 rounded-sm">
+            <p className="text-[10px] uppercase tracking-widest text-gold">
+              for the couple (private)
+            </p>
+            <p className="font-serif italic text-lg text-ink mt-1">
+              their own dashboard — QR, gallery, ZIP, welcome message
+            </p>
+            <p className="mt-3 font-mono text-xs text-ink/70 break-all bg-cream/70 p-2 rounded-sm border border-warm-gray-light">
+              {portalUrl}
+            </p>
+            <div className="mt-3 flex items-center gap-4 flex-wrap">
+              <button
+                onClick={() => copy('portal', portalUrl)}
+                className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
+              >
+                {copied === 'portal' ? 'copied ✦' : 'copy link'}
+              </button>
+              <button
+                onClick={handleRotateToken}
+                className="text-[10px] uppercase tracking-widest text-ink/50 hover:text-ink"
+              >
+                rotate link
+              </button>
+            </div>
+            <p className="mt-3 text-[11px] text-ink/55 leading-relaxed">
+              Paste this into your reply email or text. Anyone with this link can
+              view and download — share it carefully.
+            </p>
+          </div>
+        </div>
+      </section>
 
       <div className="mt-16">
         <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-6 text-center">

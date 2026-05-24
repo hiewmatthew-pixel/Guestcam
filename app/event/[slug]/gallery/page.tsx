@@ -39,6 +39,7 @@ export default function EventGalleryPage() {
           wedding_date: new Date().toISOString().slice(0, 10),
           welcome_message: null,
           tier: 'signature',
+          manage_token: 'demo-portal',
           created_at: new Date().toISOString(),
         };
         setEvent(demoEvent);

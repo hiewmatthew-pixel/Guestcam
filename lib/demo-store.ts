@@ -3,6 +3,7 @@
 // plus a base64 copy in localStorage so they survive a refresh.
 
 import type { EventRow, SubmissionRow } from './supabase';
+import { generateManageToken } from './tokens';
 
 const EVENTS_KEY = 'ggc:events';
 const SUBS_KEY = 'ggc:subs';
@@ -75,10 +76,28 @@ export function createEvent(input: {
     wedding_date: input.wedding_date,
     welcome_message: input.welcome_message ?? null,
     tier: input.tier ?? 'signature',
+    manage_token: generateManageToken(),
     created_at: new Date().toISOString(),
   };
   write(EVENTS_KEY, [row, ...events]);
   return row;
+}
+
+export function updateEvent(
+  id: string,
+  patch: Partial<Pick<EventRow, 'welcome_message' | 'manage_token'>>,
+): EventRow | null {
+  const events = listEvents();
+  const idx = events.findIndex((e) => e.id === id);
+  if (idx < 0) return null;
+  const updated = { ...events[idx], ...patch };
+  events[idx] = updated;
+  write(EVENTS_KEY, events);
+  return updated;
+}
+
+export function rotateManageToken(id: string): EventRow | null {
+  return updateEvent(id, { manage_token: generateManageToken() });
 }
 
 export function deleteEvent(id: string) {

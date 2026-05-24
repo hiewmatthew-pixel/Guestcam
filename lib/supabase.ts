@@ -25,6 +25,7 @@ export type EventRow = {
   wedding_date: string;
   welcome_message: string | null;
   tier: string;
+  manage_token: string;
   created_at: string;
 };
 

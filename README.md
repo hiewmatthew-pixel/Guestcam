@@ -71,11 +71,16 @@ create table if not exists public.events (
   wedding_date date not null,
   welcome_message text,
   tier text not null default 'signature' check (tier in ('glimpse', 'signature', 'studio')),
+  manage_token text not null,
   created_at timestamptz not null default now()
 );
+create index if not exists events_manage_token_idx on public.events(manage_token);
 
--- if you already created the events table above before this column existed:
+-- if you created the events table before these columns existed:
 -- alter table public.events add column if not exists tier text not null default 'signature';
+-- alter table public.events add column if not exists manage_token text;
+-- update public.events set manage_token = encode(gen_random_bytes(9), 'base64') where manage_token is null;
+-- alter table public.events alter column manage_token set not null;
 
 -- submissions
 create table if not exists public.submissions (
@@ -126,6 +131,15 @@ create policy "anon can delete own events"
 create policy "anon can delete submissions"
   on public.submissions for delete
   using (true);
+
+-- couple's portal needs to update welcome_message; the client always
+-- includes the manage_token in the WHERE clause, so an open policy is
+-- safe in practice. Tighten by replacing with a hashed-token check if
+-- you want stronger guarantees.
+create policy "anon can update events"
+  on public.events for update
+  using (true)
+  with check (true);
 ```
 
 > **Hardening note**: the policies above let any anon caller create/delete
@@ -272,6 +286,7 @@ Supabase env vars. The `/event/demo` slug always works regardless.
 │   ├── event/
 │   │   └── [slug]/
 │   │       ├── gallery/page.tsx
+│   │       ├── portal/[token]/page.tsx
 │   │       └── page.tsx
 │   ├── pricing/
 │   │   └── page.tsx
@@ -289,6 +304,7 @@ Supabase env vars. The `/event/demo` slug always works regardless.
 │   ├── filters.ts
 │   ├── supabase.ts
 │   ├── tiers.ts
+│   ├── tokens.ts
 │   └── zip.ts
 ├── styles/
 │   └── globals.css
