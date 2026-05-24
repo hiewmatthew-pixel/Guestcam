@@ -2,6 +2,20 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { TIER_LIST, formatPriceCAD } from '@/lib/tiers';
 
+const INQUIRY_EMAIL = 'bookings@goldenglancestudio.com';
+
+function inquiryHref(tierLabel: string, price: number) {
+  const subject = `Guest Cam · ${tierLabel}`;
+  const body =
+    `Hello Golden Glance,\n\n` +
+    `We'd love to book the ${tierLabel} tier (${formatPriceCAD(price)}) for our wedding.\n\n` +
+    `Our names: \n` +
+    `Wedding date: \n` +
+    `Venue (if booked): \n\n` +
+    `Thank you,\n`;
+  return `mailto:${INQUIRY_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 const FAQ = [
   {
     q: 'do my guests need to install anything?',
@@ -14,6 +28,10 @@ const FAQ = [
   {
     q: 'is the price per guest, or one flat fee?',
     a: 'One flat fee for the whole evening. You should never have to think about a per-photo cost on your wedding day, and your guests should never be metered.',
+  },
+  {
+    q: 'how do we pay?',
+    a: 'A 25% deposit by e-transfer reserves your date. The balance is billed through ShootProof, which accepts credit card. We send a small contract before either payment so everything is on paper.',
   },
   {
     q: 'what if our wedding is bigger than expected?',
@@ -97,8 +115,8 @@ export default function PricingPage() {
                   ))}
                 </ul>
 
-                <Link
-                  href={`/admin?tier=${t.id}`}
+                <a
+                  href={inquiryHref(t.label, t.price)}
                   className={[
                     'mt-10 block text-center py-3 text-xs uppercase tracking-widest',
                     isHero
@@ -106,15 +124,18 @@ export default function PricingPage() {
                       : 'border border-ink text-ink hover:bg-ink hover:text-cream transition-colors',
                   ].join(' ')}
                 >
-                  begin with {t.label.toLowerCase()}
-                </Link>
+                  begin a conversation
+                </a>
               </article>
             );
           })}
         </div>
 
-        <p className="mt-10 text-center text-xs text-ink/50">
-          Toronto-based. Prices in Canadian dollars. HST included.
+        <p className="mt-10 text-center text-xs text-ink/55 max-w-md mx-auto leading-relaxed">
+          Reserve with a 25% deposit by e-transfer, balance billed through ShootProof.
+        </p>
+        <p className="mt-3 text-center text-[10px] uppercase tracking-widest text-ink/40">
+          Toronto-based · Prices in CAD · HST included
         </p>
       </section>
 
