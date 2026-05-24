@@ -246,10 +246,16 @@ export default function EventCapturePage() {
     return (
       <main className="min-h-screen flex flex-col">
         <header className="px-6 pt-8 flex items-center gap-3">
-          <Logo className="h-5 w-8 text-ink" />
-          <span className="text-[11px] tracking-widest uppercase text-ink/60">
-            GlanceCam
-          </span>
+          <Link
+            href="/"
+            aria-label="back to home"
+            className="flex items-center gap-3 group"
+          >
+            <Logo className="h-5 w-8 text-ink" />
+            <span className="text-[11px] tracking-widest uppercase text-ink/60 group-hover:text-ink transition-colors">
+              GlanceCam
+            </span>
+          </Link>
           {slug === 'demo' && (
             <span className="ml-auto text-[10px] uppercase tracking-widest text-gold">
               demo mode

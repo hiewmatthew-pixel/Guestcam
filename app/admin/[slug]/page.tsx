@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { isAdminAuthed } from '../actions';
 import LoginForm from '../LoginForm';
@@ -9,10 +10,16 @@ export default async function AdminEventPage({ params }: { params: { slug: strin
   return (
     <main className="min-h-screen">
       <header className="px-6 pt-8 flex items-center gap-3">
-        <Logo className="h-5 w-8 text-ink" />
-        <span className="text-[11px] tracking-widest uppercase text-ink/70">
-          Golden Glance · Admin
-        </span>
+        <Link
+          href="/"
+          aria-label="back to home"
+          className="flex items-center gap-3 group"
+        >
+          <Logo className="h-5 w-8 text-ink" />
+          <span className="text-[11px] tracking-widest uppercase text-ink/70 group-hover:text-ink transition-colors">
+            Golden Glance · Admin
+          </span>
+        </Link>
       </header>
 
       <section className="px-6 py-10">

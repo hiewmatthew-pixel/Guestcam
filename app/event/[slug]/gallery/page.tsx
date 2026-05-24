@@ -130,7 +130,9 @@ export default function EventGalleryPage() {
   return (
     <main className="min-h-screen">
       <header className="px-6 pt-8 pb-6 flex items-center gap-3">
-        <Logo className="h-5 w-8 text-ink" />
+        <Link href="/" aria-label="back to home" className="shrink-0">
+          <Logo className="h-5 w-8 text-ink" />
+        </Link>
         <div className="flex-1">
           <p className="text-[10px] uppercase tracking-widest text-ink/50">
             live gallery
