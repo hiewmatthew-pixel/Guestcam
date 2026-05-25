@@ -317,7 +317,7 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
         })}
       </div>
 
-      {/* Tray button */}
+      {/* Tray buttons + emoji input (always visible) */}
       <div className="mt-4 flex items-center justify-between gap-3">
         <button
           type="button"
@@ -336,17 +336,19 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
           </button>
         )}
       </div>
+
+      <EmojiPicker
+        disabled={placed.length >= MAX_STICKERS}
+        onPick={addEmoji}
+      />
+
       <p className="mt-2 text-[10px] uppercase tracking-widest text-cream/40">
-        drag · pinch to resize · two fingers to rotate · emojis welcome
+        drag · pinch to resize · two fingers to rotate
       </p>
 
       {trayOpen && (
         <div className="mt-3 p-2 bg-black/40 rounded-sm">
-          <EmojiPicker
-            disabled={placed.length >= MAX_STICKERS}
-            onPick={addEmoji}
-          />
-          <div className="mt-2 grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto">
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto">
             {library.map((def) => {
               const url = stickerToDataUrl(renderStickerSvg(def, event), def.tone);
               const disabled = placed.length >= MAX_STICKERS;
@@ -378,38 +380,39 @@ function EmojiPicker({
   disabled: boolean;
   onPick: (emoji: string) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [value, setValue] = useState('');
   return (
-    <div className="flex items-stretch gap-2">
-      <label
+    <div className="mt-3 flex items-stretch gap-2">
+      <div
         className={[
-          'flex-1 flex items-center gap-2 bg-cream/95 text-ink rounded-sm px-3 py-2 cursor-text',
+          'flex-1 flex items-center gap-2 bg-cream text-ink rounded-sm px-3 py-2 border border-gold/60',
           disabled ? 'opacity-40 pointer-events-none' : '',
         ].join(' ')}
-        onClick={() => inputRef.current?.focus()}
       >
-        <span className="text-lg leading-none">😊</span>
-        <span className="text-[11px] uppercase tracking-widest text-ink/70 flex-1">
-          tap and pick an emoji from your keyboard
+        <span className="text-xl leading-none" aria-hidden>
+          😊
         </span>
         <input
-          ref={inputRef}
           type="text"
           inputMode="text"
           autoComplete="off"
-          // The input is purely a keyboard trigger — we read each value
-          // change and treat it as a new emoji placement.
+          autoCapitalize="off"
+          spellCheck={false}
+          placeholder="tap and pick an emoji from your keyboard"
+          value={value}
           onChange={(e) => {
-            const val = e.target.value;
-            if (val) {
-              onPick(val);
-              e.target.value = '';
+            const next = e.target.value;
+            setValue(next);
+            // any non-whitespace input -> place it and clear
+            if (next && next.trim().length > 0) {
+              onPick(next);
+              setValue('');
             }
           }}
-          className="absolute opacity-0 w-px h-px"
+          className="flex-1 bg-transparent text-ink placeholder:text-ink/45 outline-none text-[12px] tracking-wide"
           aria-label="emoji input"
         />
-      </label>
+      </div>
     </div>
   );
 }
