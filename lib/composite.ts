@@ -36,9 +36,10 @@ export async function compositePhoto(
   if (!ctx) return sourceBlob;
   ctx.drawImage(img, 0, 0);
 
-  // resolve sticker images in parallel
+  // resolve library sticker images in parallel (emojis don't need preloading)
   const resolved = await Promise.all(
     placed.map(async (p) => {
+      if (p.kind === 'emoji') return { placement: p, img: null as null };
       const def = getStickerById(p.id);
       if (!def) return null;
       const url = stickerToDataUrl(renderStickerSvg(def, event), def.tone);
@@ -49,15 +50,32 @@ export async function compositePhoto(
 
   // base sticker size scaled to canvas (assume on-screen image was rendered
   // at ~75vh; map STICKER_BASE_PX to the same proportion of the image height)
-  const baseHeight = canvas.height * (STICKER_BASE_PX / 800); // rough but consistent
+  const baseHeight = canvas.height * (STICKER_BASE_PX / 800);
   for (const r of resolved) {
     if (!r) continue;
-    const { placement, img: si } = r;
+    const { placement } = r;
+    const cx = placement.x * canvas.width;
+    const cy = placement.y * canvas.height;
+
+    if (placement.kind === 'emoji') {
+      // 110px on-screen at scale=1 -> map to image-proportional size
+      const fontPx = canvas.height * (110 / 800) * placement.scale;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(placement.rotation);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `${fontPx}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+      ctx.fillText(placement.emoji, 0, 0);
+      ctx.restore();
+      continue;
+    }
+
+    if (!r.img) continue;
+    const si = r.img;
     const aspect = si.naturalWidth / si.naturalHeight;
     const h = baseHeight * placement.scale;
     const w = h * aspect;
-    const cx = placement.x * canvas.width;
-    const cy = placement.y * canvas.height;
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(placement.rotation);

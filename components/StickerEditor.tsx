@@ -11,13 +11,15 @@ import {
 import type { StickerSetId } from '@/lib/tiers';
 
 export type PlacedSticker = {
-  uid: string;            // unique placement id
-  id: StickerId;
-  x: number;              // 0..1 (normalized to image width)
-  y: number;              // 0..1 (normalized to image height)
-  scale: number;          // 0.1..2 ish
-  rotation: number;       // radians
-};
+  uid: string;             // unique placement id
+  x: number;               // 0..1 (normalized to image width)
+  y: number;               // 0..1 (normalized to image height)
+  scale: number;           // 0.1..2 ish
+  rotation: number;        // radians
+} & (
+  | { kind: 'library'; id: StickerId }
+  | { kind: 'emoji'; emoji: string }
+);
 
 type Props = {
   // photo to overlay on
@@ -63,7 +65,26 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
     if (placed.length >= MAX_STICKERS) return;
     const next: PlacedSticker = {
       uid: uid(),
+      kind: 'library',
       id: s.id,
+      x: 0.5,
+      y: 0.5,
+      scale: 0.6,
+      rotation: 0,
+    };
+    setPlaced((p) => [...p, next]);
+    setActiveUid(next.uid);
+    setTrayOpen(false);
+  }
+
+  function addEmoji(emoji: string) {
+    if (placed.length >= MAX_STICKERS) return;
+    const trimmed = emoji.trim();
+    if (!trimmed) return;
+    const next: PlacedSticker = {
+      uid: uid(),
+      kind: 'emoji',
+      emoji: trimmed,
       x: 0.5,
       y: 0.5,
       scale: 0.6,
@@ -233,10 +254,32 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
         />
 
         {placed.map((s) => {
-          const def = library.find((l) => l.id === s.id);
-          if (!def) return null;
-          const url = stickerToDataUrl(renderStickerSvg(def, event), def.tone);
           const isActive = activeUid === s.uid;
+          let inner: React.ReactNode = null;
+          if (s.kind === 'emoji') {
+            inner = (
+              <span
+                className="block select-none pointer-events-none leading-none"
+                style={{ fontSize: 110 }}
+              >
+                {s.emoji}
+              </span>
+            );
+          } else {
+            const def = library.find((l) => l.id === s.id);
+            if (!def) return null;
+            const url = stickerToDataUrl(renderStickerSvg(def, event), def.tone);
+            inner = (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={url}
+                alt={def.label}
+                draggable={false}
+                className="block select-none pointer-events-none"
+                style={{ width: 140, height: 'auto' }}
+              />
+            );
+          }
           return (
             <div
               key={s.uid}
@@ -254,14 +297,7 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
               }}
               className={isActive ? 'outline outline-1 outline-gold/80' : ''}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={url}
-                alt={def.label}
-                draggable={false}
-                className="block select-none pointer-events-none"
-                style={{ width: 140, height: 'auto' }}
-              />
+              {inner}
               {isActive && (
                 <button
                   type="button"
@@ -301,30 +337,80 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
         )}
       </div>
       <p className="mt-2 text-[10px] uppercase tracking-widest text-cream/40">
-        drag · pinch with two fingers to resize and rotate
+        drag · pinch to resize · two fingers to rotate · emojis welcome
       </p>
 
       {trayOpen && (
-        <div className="mt-3 grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto p-2 bg-black/40 rounded-sm">
-          {library.map((def) => {
-            const url = stickerToDataUrl(renderStickerSvg(def, event), def.tone);
-            const disabled = placed.length >= MAX_STICKERS;
-            return (
-              <button
-                key={def.id}
-                type="button"
-                disabled={disabled}
-                onClick={() => addSticker(def)}
-                className="aspect-square bg-cream/95 rounded-sm grid place-items-center p-2 disabled:opacity-40"
-                title={def.label}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt={def.label} className="max-w-full max-h-full" />
-              </button>
-            );
-          })}
+        <div className="mt-3 p-2 bg-black/40 rounded-sm">
+          <EmojiPicker
+            disabled={placed.length >= MAX_STICKERS}
+            onPick={addEmoji}
+          />
+          <div className="mt-2 grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto">
+            {library.map((def) => {
+              const url = stickerToDataUrl(renderStickerSvg(def, event), def.tone);
+              const disabled = placed.length >= MAX_STICKERS;
+              return (
+                <button
+                  key={def.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => addSticker(def)}
+                  className="aspect-square bg-cream/95 rounded-sm grid place-items-center p-2 disabled:opacity-40"
+                  title={def.label}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt={def.label} className="max-w-full max-h-full" />
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
   );
 }
+
+function EmojiPicker({
+  disabled,
+  onPick,
+}: {
+  disabled: boolean;
+  onPick: (emoji: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className="flex items-stretch gap-2">
+      <label
+        className={[
+          'flex-1 flex items-center gap-2 bg-cream/95 text-ink rounded-sm px-3 py-2 cursor-text',
+          disabled ? 'opacity-40 pointer-events-none' : '',
+        ].join(' ')}
+        onClick={() => inputRef.current?.focus()}
+      >
+        <span className="text-lg leading-none">😊</span>
+        <span className="text-[11px] uppercase tracking-widest text-ink/70 flex-1">
+          tap and pick an emoji from your keyboard
+        </span>
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="text"
+          autoComplete="off"
+          // The input is purely a keyboard trigger — we read each value
+          // change and treat it as a new emoji placement.
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val) {
+              onPick(val);
+              e.target.value = '';
+            }
+          }}
+          className="absolute opacity-0 w-px h-px"
+          aria-label="emoji input"
+        />
+      </label>
+    </div>
+  );
+}
+
