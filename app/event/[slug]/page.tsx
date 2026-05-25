@@ -548,14 +548,14 @@ export default function EventCapturePage() {
           <span className="text-[10px] uppercase tracking-widest text-cream/40">
             {mode === 'photo' && 'still'}
             {mode === 'video' && 'up to 15s'}
-            {mode === 'boomerang' && 'loop · 2s'}
+            {mode === 'boomerang' && 'loop · 8s'}
           </span>
 
           <div className="flex justify-center">
             <CaptureButton
               mode={mode}
               recording={recording}
-              maxSeconds={mode === 'boomerang' ? 2 : 15}
+              maxSeconds={mode === 'boomerang' ? 8 : 15}
               onTap={onCaptureTap}
             />
           </div>

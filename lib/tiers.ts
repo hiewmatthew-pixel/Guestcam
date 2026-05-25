@@ -66,7 +66,7 @@ export const TIERS: Record<TierId, TierDef> = {
     blurb: 'The full evening — every filter, photos, film and boomerang.',
     bullets: [
       'Photos and 15-second films',
-      'Two-second boomerangs (looping)',
+      'Eight-second boomerangs (looping)',
       'All five film filters',
       'Full sticker library',
       'Live shared gallery for 30 days',

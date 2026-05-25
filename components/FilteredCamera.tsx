@@ -62,7 +62,7 @@ function classifyError(e: any): CameraError {
 }
 
 const MAX_VIDEO_SECONDS = 15;
-const MAX_BOOMERANG_SECONDS = 2;
+const MAX_BOOMERANG_SECONDS = 8;
 const MAX_VIDEO_HEIGHT = 720;
 
 export type FilteredCameraHandle = {
