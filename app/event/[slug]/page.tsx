@@ -11,6 +11,7 @@ import { FILTERS, FilterId } from '@/lib/filters';
 import { addSubmission, getEventBySlug, isDemoMode, setDemoMode } from '@/lib/demo-store';
 import { getSupabase, isSupabaseConfigured, type EventRow } from '@/lib/supabase';
 import { getTier } from '@/lib/tiers';
+import { cleanString, LIMITS } from '@/lib/validate';
 
 type Stage = 'welcome' | 'capture' | 'review';
 
@@ -159,6 +160,24 @@ export default function EventCapturePage() {
 
   async function submitPending() {
     if (!pendingBlob || !event) return;
+
+    // Defensive upload guards (matches expected client output; the bucket
+    // policy in the README also enforces these limits server-side).
+    const MAX_BYTES = pendingType === 'photo' ? 8 * 1024 * 1024 : 30 * 1024 * 1024;
+    const ALLOWED = pendingType === 'photo'
+      ? ['image/jpeg', 'image/png', 'image/webp']
+      : ['video/webm', 'video/mp4'];
+    if (pendingBlob.size > MAX_BYTES) {
+      alert('That file is too large. Try a shorter clip or a single photo.');
+      return;
+    }
+    if (pendingBlob.type && !ALLOWED.some((a) => pendingBlob.type.startsWith(a))) {
+      alert('That file type is not supported.');
+      return;
+    }
+
+    const cleanGuest = cleanString(guestName, LIMITS.GUEST_NAME) || null;
+
     setSubmitting(true);
     try {
       const useSupabase = isSupabaseConfigured && !demo && event.id !== 'demo-event';
@@ -177,7 +196,7 @@ export default function EventCapturePage() {
           media_url: pub.publicUrl,
           media_type: pendingType,
           filter_name: filter,
-          guest_name: guestName.trim() || null,
+          guest_name: cleanGuest,
           approved: true,
         });
         if (insert.error) throw insert.error;
@@ -187,7 +206,7 @@ export default function EventCapturePage() {
           blob: pendingBlob,
           media_type: pendingType,
           filter_name: filter,
-          guest_name: guestName.trim() || null,
+          guest_name: cleanGuest,
         });
       }
       setSubmittedOk(true);
@@ -287,6 +306,7 @@ export default function EventCapturePage() {
               <input
                 value={guestName}
                 onChange={(e) => setGuestName(e.target.value)}
+                maxLength={LIMITS.GUEST_NAME}
                 placeholder="how should we credit you?"
                 className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2 placeholder:text-ink/30"
               />

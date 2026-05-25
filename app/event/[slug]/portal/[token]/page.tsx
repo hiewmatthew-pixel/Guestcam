@@ -21,6 +21,8 @@ import {
 } from '@/lib/supabase';
 import { downloadAsZip } from '@/lib/zip';
 import { getTier } from '@/lib/tiers';
+import { constantTimeEqual, LIMITS, safeFilenamePart } from '@/lib/validate';
+import { updateWelcomeAction } from './actions';
 
 type Access = 'loading' | 'ok' | 'denied' | 'missing';
 
@@ -50,7 +52,7 @@ export default function CouplePortalPage() {
     async function load() {
       // demo always works with token "demo-portal"
       if (slug === 'demo') {
-        if (token !== 'demo-portal') {
+        if (!constantTimeEqual(token, 'demo-portal')) {
           setAccess('denied');
           return;
         }
@@ -76,7 +78,7 @@ export default function CouplePortalPage() {
       // local demo store
       const local = getEventBySlug(slug);
       if (local) {
-        if (local.manage_token !== token) {
+        if (!constantTimeEqual(local.manage_token, token)) {
           setAccess('denied');
           return;
         }
@@ -101,7 +103,7 @@ export default function CouplePortalPage() {
           setAccess('missing');
           return;
         }
-        if ((ev as EventRow).manage_token !== token) {
+        if (!constantTimeEqual((ev as EventRow).manage_token, token)) {
           setAccess('denied');
           return;
         }
@@ -191,19 +193,26 @@ export default function CouplePortalPage() {
       const local = getEventBySlug(slug);
       if (local) {
         updateEvent(local.id, { welcome_message: next });
+        setEvent({ ...event, welcome_message: next });
+        setWelcomeSaved(true);
+        setTimeout(() => setWelcomeSaved(false), 1500);
+        return;
       }
-      // supabase
-      if (isSupabaseConfigured && !isDemoMode() && event.id !== 'demo-event' && !getEventBySlug(slug)) {
-        const sb = getSupabase()!;
-        await sb
-          .from('events')
-          .update({ welcome_message: next })
-          .eq('id', event.id)
-          .eq('manage_token', token);
+      // supabase via server action — verifies the token server-side
+      if (isSupabaseConfigured && !isDemoMode() && event.id !== 'demo-event') {
+        const res = await updateWelcomeAction({
+          slug,
+          token,
+          message: welcomeDraft,
+        });
+        if (!res.ok) {
+          alert(res.error || 'Could not save.');
+          return;
+        }
+        setEvent({ ...event, welcome_message: next });
+        setWelcomeSaved(true);
+        setTimeout(() => setWelcomeSaved(false), 1500);
       }
-      setEvent({ ...event, welcome_message: next });
-      setWelcomeSaved(true);
-      setTimeout(() => setWelcomeSaved(false), 1500);
     } finally {
       setSavingWelcome(false);
     }
@@ -215,7 +224,9 @@ export default function CouplePortalPage() {
     try {
       const zipped = items.map((it, i) => {
         const ext = it.media_type === 'photo' ? 'jpg' : 'webm';
-        const name = `${String(i + 1).padStart(3, '0')}-${it.filter_name}-${it.guest_name ?? 'guest'}.${ext}`;
+        const filter = safeFilenamePart(it.filter_name);
+        const who = safeFilenamePart(it.guest_name);
+        const name = `${String(i + 1).padStart(3, '0')}-${filter}-${who}.${ext}`;
         return { url: it.media_url, filename: name };
       });
       await downloadAsZip(zipped, `${slug}-gallery.zip`);
@@ -338,6 +349,7 @@ export default function CouplePortalPage() {
           <textarea
             value={welcomeDraft}
             onChange={(e) => setWelcomeDraft(e.target.value)}
+            maxLength={LIMITS.WELCOME_MESSAGE}
             rows={3}
             placeholder="A short note your guests will see before they open the camera…"
             className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2 resize-none"

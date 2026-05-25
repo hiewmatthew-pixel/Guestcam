@@ -11,7 +11,6 @@ import {
   rotateManageToken,
   subscribeToSubmissions,
 } from '@/lib/demo-store';
-import { generateManageToken } from '@/lib/tokens';
 import {
   getSupabase,
   isSupabaseConfigured,
@@ -20,6 +19,8 @@ import {
 } from '@/lib/supabase';
 import { downloadAsZip } from '@/lib/zip';
 import { formatPriceCAD, getTier } from '@/lib/tiers';
+import { safeFilenamePart } from '@/lib/validate';
+import { rotateTokenAction } from '../event-actions';
 
 type Props = { slug: string };
 
@@ -127,17 +128,14 @@ export default function AdminEventDetail({ slug }: Props) {
       if (updated) setEvent(updated);
       return;
     }
-    // supabase path
+    // supabase path → go through server action so service-role + admin gate apply
     if (isSupabaseConfigured && !isDemoMode()) {
-      const sb = getSupabase()!;
-      const next = generateManageToken();
-      const { data, error } = await sb
-        .from('events')
-        .update({ manage_token: next })
-        .eq('id', event.id)
-        .select()
-        .single();
-      if (!error && data) setEvent(data as EventRow);
+      const res = await rotateTokenAction(event.id);
+      if (res.ok) {
+        setEvent({ ...event, manage_token: res.manage_token });
+      } else {
+        alert(res.error);
+      }
     }
   }
 
@@ -147,7 +145,9 @@ export default function AdminEventDetail({ slug }: Props) {
     try {
       const zipped = items.map((it, i) => {
         const ext = it.media_type === 'photo' ? 'jpg' : 'webm';
-        const name = `${String(i + 1).padStart(3, '0')}-${it.filter_name}-${it.guest_name ?? 'guest'}.${ext}`;
+        const filter = safeFilenamePart(it.filter_name);
+        const who = safeFilenamePart(it.guest_name);
+        const name = `${String(i + 1).padStart(3, '0')}-${filter}-${who}.${ext}`;
         return { url: it.media_url, filename: name };
       });
       await downloadAsZip(zipped, `${slug}-gallery.zip`);

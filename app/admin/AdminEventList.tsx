@@ -16,6 +16,9 @@ import {
   type EventRow,
 } from '@/lib/supabase';
 import { DEFAULT_TIER, TIER_LIST, TierId, formatPriceCAD, getTier } from '@/lib/tiers';
+import { LIMITS } from '@/lib/validate';
+import { createEventAction, deleteEventAction } from './event-actions';
+import { adminLogout } from './actions';
 
 function toSlug(s: string) {
   return s
@@ -74,15 +77,13 @@ export default function AdminEventList() {
           tier,
         });
       } else {
-        const sb = getSupabase()!;
-        const { error } = await sb.from('events').insert({
-          slug,
-          couple_names: coupleNames.trim(),
+        const res = await createEventAction({
+          couple_names: coupleNames,
           wedding_date: weddingDate,
-          welcome_message: welcome.trim() || null,
+          welcome_message: welcome,
           tier,
         });
-        if (error) throw error;
+        if (!res.ok) throw new Error(res.error);
       }
       setCoupleNames('');
       setWeddingDate('');
@@ -101,29 +102,44 @@ export default function AdminEventList() {
     if (demo || !isSupabaseConfigured) {
       deleteEvent(id);
     } else {
-      const sb = getSupabase()!;
-      await sb.from('submissions').delete().eq('event_id', id);
-      await sb.from('events').delete().eq('id', id);
+      const res = await deleteEventAction(id);
+      if (!res.ok) {
+        alert(res.error);
+        return;
+      }
     }
     await refresh();
   }
 
+  async function handleLogout() {
+    await adminLogout();
+    window.location.reload();
+  }
+
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <h2 className="font-serif italic text-3xl">events</h2>
-        <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-ink/60">
-          <input
-            type="checkbox"
-            checked={demo}
-            onChange={(e) => {
-              setDemo(e.target.checked);
-              setDemoMode(e.target.checked);
-              refresh(e.target.checked);
-            }}
-          />
-          demo mode
-        </label>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-ink/60">
+            <input
+              type="checkbox"
+              checked={demo}
+              onChange={(e) => {
+                setDemo(e.target.checked);
+                setDemoMode(e.target.checked);
+                refresh(e.target.checked);
+              }}
+            />
+            demo mode
+          </label>
+          <button
+            onClick={handleLogout}
+            className="text-[10px] uppercase tracking-widest text-ink/60 hover:text-ink"
+          >
+            sign out
+          </button>
+        </div>
       </div>
 
       <form onSubmit={handleCreate} className="mt-8 grid gap-4 border border-warm-gray-light p-5 rounded-sm">
@@ -134,6 +150,7 @@ export default function AdminEventList() {
           <input
             value={coupleNames}
             onChange={(e) => setCoupleNames(e.target.value)}
+            maxLength={LIMITS.COUPLE_NAMES}
             placeholder="Sarah & James"
             className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2"
           />
@@ -156,6 +173,7 @@ export default function AdminEventList() {
           <textarea
             value={welcome}
             onChange={(e) => setWelcome(e.target.value)}
+            maxLength={LIMITS.WELCOME_MESSAGE}
             rows={3}
             placeholder="A short note to your guests…"
             className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2 resize-none"

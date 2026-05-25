@@ -47,13 +47,20 @@ Routes:
 ## Environment variables (`.env.local`)
 
 ```bash
+# Public — exposed to the browser bundle (safe by design)
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=ey...
-ADMIN_PASSWORD=your-password-here
+
+# Server-only — NEVER prefix with NEXT_PUBLIC_, never expose to the client
+SUPABASE_SERVICE_ROLE_KEY=ey...    # used by server actions to bypass RLS
+ADMIN_PASSWORD=use-something-strong
 ```
 
-If `NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` is missing,
-the app silently falls back to demo mode (localStorage).
+If the Supabase vars are missing, the app silently falls back to demo
+mode (localStorage). If `SUPABASE_SERVICE_ROLE_KEY` is missing the app
+still runs, but admin event create/delete/rotate-token will return a
+clear "server not configured" error instead of silently using a less
+secure path.
 
 ---
 
@@ -99,17 +106,20 @@ create index if not exists submissions_event_idx on public.submissions(event_id,
 alter table public.events enable row level security;
 alter table public.submissions enable row level security;
 
--- anyone can read events (they need to to load the slug)
+-- ANON CAN ONLY READ events. All event create/update/delete + token
+-- rotation goes through server actions in app/admin/event-actions.ts
+-- that use the SUPABASE_SERVICE_ROLE_KEY after verifying the admin
+-- cookie (or, for portal welcome updates, the manage_token).
 create policy "events readable by anyone"
   on public.events for select
   using (true);
 
--- anyone can read approved submissions
+-- anyone can read approved submissions (public gallery)
 create policy "approved submissions readable by anyone"
   on public.submissions for select
   using (approved = true);
 
--- anyone (anon) can insert a submission tied to an existing event
+-- anon can insert a submission tied to an existing event row
 create policy "anon can insert submissions"
   on public.submissions for insert
   with check (
@@ -117,40 +127,24 @@ create policy "anon can insert submissions"
     and exists (select 1 from public.events e where e.id = event_id)
   );
 
--- only service_role can write events (admin uses anon key here for simplicity;
--- if you want stricter control, gate event creation behind a server action with
--- the service role key)
-create policy "anon can insert events"
-  on public.events for insert
-  with check (true);
-
-create policy "anon can delete own events"
-  on public.events for delete
-  using (true);
-
-create policy "anon can delete submissions"
-  on public.submissions for delete
-  using (true);
-
--- couple's portal needs to update welcome_message; the client always
--- includes the manage_token in the WHERE clause, so an open policy is
--- safe in practice. Tighten by replacing with a hashed-token check if
--- you want stronger guarantees.
-create policy "anon can update events"
-  on public.events for update
-  using (true)
-  with check (true);
+-- intentionally NO policy for anon INSERT/UPDATE/DELETE on events,
+-- and NO policy for anon UPDATE/DELETE on submissions. service_role
+-- bypasses RLS, so the server actions still work.
 ```
 
-> **Hardening note**: the policies above let any anon caller create/delete
-> events. That's fine for a single-tenant studio install behind your admin
-> password, but if you ship multi-tenant, move event mutations into a server
-> action that uses the **service role key** and tighten these to read-only
-> for `anon`.
+> **Why no anon policies for event mutations?** The anon key ships in the
+> browser bundle. Letting anon callers create or delete events with that
+> key would mean anyone running `curl` against your Supabase REST endpoint
+> could bypass the admin password. Mutations therefore route through
+> server actions that (a) verify the admin cookie or magic-link token,
+> then (b) execute with the service_role key on the server. The
+> service_role key must NEVER appear in any `NEXT_PUBLIC_*` env var.
 
 3. **Storage**: in the Supabase dashboard → Storage → New bucket:
    - Name: `submissions`
    - Public: **yes** (public read so the gallery can render media)
+   - **File size limit**: `30 MB` (we cap clients at 8 MB photo / 30 MB video)
+   - **Allowed MIME types**: `image/jpeg,image/png,image/webp,video/webm,video/mp4`
 4. **Storage policy** — add this policy on the `submissions` bucket so the
    anon key can upload:
 
