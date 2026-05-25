@@ -194,8 +194,10 @@ const STICKERS: StickerDef[] = [
 export function getStickersForSet(set: StickerSetId | null): StickerDef[] {
   if (!set) return [];
   if (set === 'essential') return STICKERS.filter((s) => s.essential);
-  if (set === 'full') return STICKERS.filter((s) => !s.custom);
-  return STICKERS; // full-with-custom
+  // 'full' and 'full-with-custom' both expose the same tray to guests —
+  // the custom couple-name + date entries are reserved for the always-on
+  // overlay on Studio events (drawn separately), not the manual sticker tray.
+  return STICKERS.filter((s) => !s.custom);
 }
 
 export function getStickerById(id: StickerId): StickerDef | undefined {

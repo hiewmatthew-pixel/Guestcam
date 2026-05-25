@@ -8,6 +8,7 @@ import FilteredCamera, { type CaptureMode } from '@/components/FilteredCamera';
 import FilterSelector from '@/components/FilterSelector';
 import CaptureButton from '@/components/CaptureButton';
 import StickerEditor, { type PlacedSticker } from '@/components/StickerEditor';
+import CoupleOverlay from '@/components/CoupleOverlay';
 import { FILTERS, FilterId } from '@/lib/filters';
 import { addSubmission, getEventBySlug, isDemoMode, setDemoMode } from '@/lib/demo-store';
 import { getSupabase, isSupabaseConfigured, type EventRow } from '@/lib/supabase';
@@ -189,16 +190,25 @@ export default function EventCapturePage() {
 
     setSubmitting(true);
     try {
-      // Bake stickers into photos (videos/boomerangs in V1 are uploaded raw).
+      // Bake stickers + (Studio) couple overlay into photos.
+      // Videos/boomerangs in V1 are uploaded raw.
       let uploadBlob = pendingBlob;
-      if (pendingType === 'photo' && stickers.length > 0) {
+      const needsComposite =
+        pendingType === 'photo' &&
+        (stickers.length > 0 || tier.features.customCoupleOverlay);
+      if (needsComposite) {
         try {
-          uploadBlob = await compositePhoto(pendingBlob, stickers, {
-            couple_names: event.couple_names,
-            wedding_date: event.wedding_date,
-          });
+          uploadBlob = await compositePhoto(
+            pendingBlob,
+            stickers,
+            {
+              couple_names: event.couple_names,
+              wedding_date: event.wedding_date,
+            },
+            { burnCoupleOverlay: tier.features.customCoupleOverlay },
+          );
         } catch (e) {
-          console.warn('sticker composite failed, uploading raw:', e);
+          console.warn('photo composite failed, uploading raw:', e);
         }
       }
 
@@ -406,20 +416,29 @@ export default function EventCapturePage() {
 
         <div className="flex-1 grid place-items-center p-4">
           {pendingType === 'photo' ? (
-            tier.features.stickerSet ? (
-              <StickerEditor
-                src={pendingUrl}
-                set={tier.features.stickerSet}
-                event={{
-                  couple_names: event?.couple_names,
-                  wedding_date: event?.wedding_date,
-                }}
-                onChange={setStickers}
-              />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={pendingUrl} alt="" className="max-h-[70vh] w-auto" />
-            )
+            <div className="relative inline-block">
+              {tier.features.stickerSet ? (
+                <StickerEditor
+                  src={pendingUrl}
+                  set={tier.features.stickerSet}
+                  event={{
+                    couple_names: event?.couple_names,
+                    wedding_date: event?.wedding_date,
+                  }}
+                  onChange={setStickers}
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={pendingUrl} alt="" className="max-h-[70vh] w-auto" />
+              )}
+              {tier.features.customCoupleOverlay && (
+                <CoupleOverlay
+                  coupleNames={event?.couple_names}
+                  weddingDate={event?.wedding_date}
+                  variant="review"
+                />
+              )}
+            </div>
           ) : (
             <video
               src={pendingUrl}
@@ -496,6 +515,15 @@ export default function EventCapturePage() {
             {FILTERS.find((f) => f.id === filter)?.blurb}
           </p>
         </div>
+
+        {/* Studio-tier auto-overlay (couple's names + wedding date) */}
+        {tier.features.customCoupleOverlay && (
+          <CoupleOverlay
+            coupleNames={event.couple_names}
+            weddingDate={event.wedding_date}
+            variant="live"
+          />
+        )}
       </div>
 
       <div className="bg-ink/95 pb-6">
