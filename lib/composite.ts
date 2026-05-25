@@ -8,6 +8,7 @@ import {
   renderStickerSvg,
   stickerToDataUrl,
 } from './stickers';
+import { drawCoupleOverlay } from './overlay';
 import type { PlacedSticker } from '@/components/StickerEditor';
 
 const STICKER_BASE_PX = 140; // matches the on-screen sticker render size
@@ -77,64 +78,6 @@ export async function compositePhoto(
   });
 }
 
-function drawCoupleOverlay(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  event: { couple_names?: string; wedding_date?: string },
-) {
-  const names = event.couple_names?.trim();
-  const date = formatDate(event.wedding_date);
-
-  // baseline: 6% up from the bottom of the photo
-  const bottomPad = height * 0.06;
-  const namesSize = Math.round(height * 0.055); // ~5.5% of height
-  const dateSize = Math.round(height * 0.018); // ~1.8%
-  const gap = Math.round(height * 0.015);
-  const gold = '#B8956A';
-
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'alphabetic';
-  // subtle drop shadow so the type reads on busy backgrounds
-  ctx.shadowColor = 'rgba(0,0,0,0.55)';
-  ctx.shadowBlur = Math.max(4, height * 0.005);
-  ctx.shadowOffsetY = Math.max(1, height * 0.0015);
-  ctx.fillStyle = gold;
-
-  let cursorY = height - bottomPad;
-
-  if (date) {
-    ctx.font = `400 ${dateSize}px "Cormorant Garamond", "Times New Roman", serif`;
-    // letter-spacing isn't supported on 2D context across all browsers,
-    // so emulate by spacing characters manually
-    const tracked = date.split('').join('  ');
-    ctx.fillText(tracked.toUpperCase(), width / 2, cursorY);
-    cursorY -= dateSize + gap;
-  }
-
-  if (names) {
-    ctx.font = `italic 500 ${namesSize}px "Cormorant Garamond", "Times New Roman", serif`;
-    ctx.fillText(names, width / 2, cursorY);
-  }
-
-  ctx.restore();
-}
-
-function formatDate(input?: string): string | null {
-  if (!input) return null;
-  try {
-    const d = new Date(input);
-    if (Number.isNaN(d.getTime())) return null;
-    const parts = d
-      .toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
-      .split('/');
-    return parts.join(' · ');
-  } catch {
-    return null;
-  }
-}
-
 function blobToImage(blob: Blob): Promise<HTMLImageElement> {
   const url = URL.createObjectURL(blob);
   return loadImage(url).finally(() => {
@@ -147,7 +90,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`could not load ${src.slice(0, 60)}…`));
+    img.onerror = () => reject(new Error(`could not load image`));
     img.src = src;
   });
 }

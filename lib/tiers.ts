@@ -93,8 +93,8 @@ export const TIERS: Record<TierId, TierDef> = {
     blurb: 'For larger weddings and couples who want everything kept.',
     bullets: [
       'Everything in Signature',
-      'Your names in script — burned into every photo',
-      'Wedding date stamp on every photo',
+      'Your names in script — burned into every photo, film & boomerang',
+      'Wedding date stamp on every capture',
       'Live shared gallery for a full year',
       'No Golden Glance footer',
       'Priority same-day support',

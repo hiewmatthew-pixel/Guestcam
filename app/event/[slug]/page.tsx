@@ -501,6 +501,11 @@ export default function EventCapturePage() {
           facing={facing}
           mode={mode}
           recording={recording}
+          overlay={
+            tier.features.customCoupleOverlay
+              ? { couple_names: event.couple_names, wedding_date: event.wedding_date }
+              : undefined
+          }
           onPhotoCaptured={handlePhoto}
           onVideoCaptured={handleVideo}
           onRecorderError={(m) => alert(m)}

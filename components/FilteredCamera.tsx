@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FilterId, VERTEX_SHADER, getFilter } from '@/lib/filters';
+import { drawCoupleOverlay } from '@/lib/overlay';
 
 export type CaptureMode = 'photo' | 'video' | 'boomerang';
 
@@ -12,6 +13,9 @@ type Props = {
   onVideoCaptured: (blob: Blob, kind: 'video' | 'boomerang') => void;
   mode: CaptureMode;
   recording: boolean;
+  // when set, the recorded video / boomerang has couple names + wedding
+  // date burned into the bottom of each frame via a 2D output canvas.
+  overlay?: { couple_names?: string; wedding_date?: string };
   onRecorderError?: (msg: string) => void;
   onWebGLUnavailable?: () => void;
 };
@@ -78,11 +82,23 @@ export default function FilteredCamera({
   onVideoCaptured,
   mode,
   recording,
+  overlay,
   onRecorderError,
   onWebGLUnavailable,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // 2D output canvas used during recording when an overlay is active:
+  // WebGL frame is blitted onto it, the overlay is painted on top, and
+  // the recorder captures from this canvas instead of the WebGL one.
+  const outputCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const outputRafRef = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // ref-mirror so the overlay RAF always reads the latest value without
+  // tearing down + recreating the loop on each parent re-render
+  const overlayRef = useRef<Props['overlay']>(overlay);
+  useEffect(() => {
+    overlayRef.current = overlay;
+  }, [overlay]);
 
   const glRef = useRef<WebGLRenderingContext | null>(null);
   const programRef = useRef<WebGLProgram | null>(null);
@@ -376,11 +392,44 @@ export default function FilteredCamera({
   // --- capture: video --------------------------------------------
 
   const startRecording = useCallback(async () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    // capture the visible (filtered) canvas as a stream
+    const webglCanvas = canvasRef.current;
+    if (!webglCanvas) return;
+
+    // If a couple-name overlay is active, blit the WebGL canvas onto a
+    // hidden 2D output canvas every frame and paint the overlay on top,
+    // then record from that canvas so the overlay is baked into the file.
+    let recordSource: HTMLCanvasElement = webglCanvas;
+    const activeOverlay = overlayRef.current;
+    const overlayActive =
+      !!activeOverlay && (!!activeOverlay.couple_names || !!activeOverlay.wedding_date);
+
+    if (overlayActive) {
+      if (!outputCanvasRef.current) {
+        outputCanvasRef.current = document.createElement('canvas');
+      }
+      const outCanvas = outputCanvasRef.current;
+      outCanvas.width = webglCanvas.width;
+      outCanvas.height = webglCanvas.height;
+      const outCtx = outCanvas.getContext('2d');
+      if (outCtx) {
+        const tick = () => {
+          if (!outputCanvasRef.current) return;
+          outCtx.clearRect(0, 0, outCanvas.width, outCanvas.height);
+          outCtx.drawImage(webglCanvas, 0, 0, outCanvas.width, outCanvas.height);
+          const ov = overlayRef.current;
+          if (ov) {
+            drawCoupleOverlay(outCtx, outCanvas.width, outCanvas.height, ov);
+          }
+          outputRafRef.current = requestAnimationFrame(tick);
+        };
+        outputRafRef.current = requestAnimationFrame(tick);
+        recordSource = outCanvas;
+      }
+    }
+
+    // capture the chosen canvas as a stream
     const captureStream =
-      (canvas as any).captureStream?.(30) as MediaStream | undefined;
+      (recordSource as any).captureStream?.(30) as MediaStream | undefined;
     if (!captureStream) {
       onRecorderError?.('Video recording not supported on this device.');
       return;
@@ -436,6 +485,10 @@ export default function FilteredCamera({
     if (videoStopTimerRef.current) {
       clearTimeout(videoStopTimerRef.current);
       videoStopTimerRef.current = null;
+    }
+    if (outputRafRef.current) {
+      cancelAnimationFrame(outputRafRef.current);
+      outputRafRef.current = null;
     }
     const rec = recorderRef.current;
     if (rec && rec.state !== 'inactive') rec.stop();
