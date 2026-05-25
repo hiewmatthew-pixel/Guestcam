@@ -88,13 +88,18 @@ create index if not exists events_manage_token_idx on public.events(manage_token
 -- alter table public.events add column if not exists manage_token text;
 -- update public.events set manage_token = encode(gen_random_bytes(9), 'base64') where manage_token is null;
 -- alter table public.events alter column manage_token set not null;
+--
+-- to extend the media_type allowlist if you already created submissions:
+-- alter table public.submissions drop constraint if exists submissions_media_type_check;
+-- alter table public.submissions add constraint submissions_media_type_check
+--   check (media_type in ('photo', 'video', 'boomerang'));
 
 -- submissions
 create table if not exists public.submissions (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.events(id) on delete cascade,
   media_url text not null,
-  media_type text not null check (media_type in ('photo', 'video')),
+  media_type text not null check (media_type in ('photo', 'video', 'boomerang')),
   filter_name text not null,
   guest_name text,
   approved boolean not null default true,
@@ -123,7 +128,7 @@ create policy "approved submissions readable by anyone"
 create policy "anon can insert submissions"
   on public.submissions for insert
   with check (
-    media_type in ('photo', 'video')
+    media_type in ('photo', 'video', 'boomerang')
     and exists (select 1 from public.events e where e.id = event_id)
   );
 

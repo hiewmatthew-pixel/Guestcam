@@ -1,12 +1,16 @@
 import type { FilterId } from './filters';
 
 export type TierId = 'glimpse' | 'signature' | 'studio';
+export type StickerSetId = 'essential' | 'full' | 'full-with-custom';
 
 export type TierFeatures = {
   filters: FilterId[];
   allowVideo: boolean;
-  galleryDays: number;       // display copy; expiration is not enforced yet
-  customBranding: boolean;   // hides "powered by Golden Glance" footer
+  allowBoomerang: boolean;
+  stickerSet: StickerSetId | null;
+  customCoupleOverlay: boolean;
+  galleryDays: number;
+  customBranding: boolean;
   prioritySupport: boolean;
 };
 
@@ -33,11 +37,12 @@ export const TIERS: Record<TierId, TierDef> = {
     id: 'glimpse',
     label: 'Glimpse',
     italic: 'a small, warm offering',
-    price: 59,
+    price: 69,
     blurb: 'For intimate gatherings — photos only, kept simple.',
     bullets: [
       'Photos only',
       'Two warm filters (Portra · Kodak Gold)',
+      'Four essential stickers',
       'Live shared gallery for 7 days',
       'Download all as a single ZIP',
       'Unlimited guests',
@@ -45,6 +50,9 @@ export const TIERS: Record<TierId, TierDef> = {
     features: {
       filters: ['portra-400', 'kodak-gold-200'],
       allowVideo: false,
+      allowBoomerang: false,
+      stickerSet: 'essential',
+      customCoupleOverlay: false,
       galleryDays: 7,
       customBranding: false,
       prioritySupport: false,
@@ -54,11 +62,13 @@ export const TIERS: Record<TierId, TierDef> = {
     id: 'signature',
     label: 'Signature',
     italic: 'most couples choose this',
-    price: 149,
-    blurb: 'The full evening — every filter, photos and short film.',
+    price: 169,
+    blurb: 'The full evening — every filter, photos, film and boomerang.',
     bullets: [
       'Photos and 15-second films',
+      'Two-second boomerangs (looping)',
       'All five film filters',
+      'Full sticker library',
       'Live shared gallery for 30 days',
       'Custom welcome message for guests',
       'Download all as a single ZIP',
@@ -67,6 +77,9 @@ export const TIERS: Record<TierId, TierDef> = {
     features: {
       filters: ALL_FILTERS,
       allowVideo: true,
+      allowBoomerang: true,
+      stickerSet: 'full',
+      customCoupleOverlay: false,
       galleryDays: 30,
       customBranding: false,
       prioritySupport: false,
@@ -76,11 +89,12 @@ export const TIERS: Record<TierId, TierDef> = {
     id: 'studio',
     label: 'Studio',
     italic: 'a keepsake, held longer',
-    price: 279,
+    price: 299,
     blurb: 'For larger weddings and couples who want everything kept.',
     bullets: [
       'Everything in Signature',
-      'Your names and colours throughout',
+      'Your names rendered in script — overlaid on every capture',
+      'Custom date overlay',
       'Live shared gallery for a full year',
       'No Golden Glance footer',
       'Priority same-day support',
@@ -88,6 +102,9 @@ export const TIERS: Record<TierId, TierDef> = {
     features: {
       filters: ALL_FILTERS,
       allowVideo: true,
+      allowBoomerang: true,
+      stickerSet: 'full-with-custom',
+      customCoupleOverlay: true,
       galleryDays: 365,
       customBranding: true,
       prioritySupport: true,

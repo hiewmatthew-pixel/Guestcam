@@ -29,11 +29,13 @@ export type EventRow = {
   created_at: string;
 };
 
+export type MediaType = 'photo' | 'video' | 'boomerang';
+
 export type SubmissionRow = {
   id: string;
   event_id: string;
   media_url: string;
-  media_type: 'photo' | 'video';
+  media_type: MediaType;
   filter_name: string;
   guest_name: string | null;
   approved: boolean;

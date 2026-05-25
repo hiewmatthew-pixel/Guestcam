@@ -48,6 +48,20 @@ export default function Gallery({ items }: Props) {
                 className="block w-full h-auto"
                 loading="lazy"
               />
+            ) : it.media_type === 'boomerang' ? (
+              <div className="relative">
+                <video
+                  src={it.media_url}
+                  className="block w-full h-auto"
+                  muted
+                  playsInline
+                  autoPlay
+                  loop
+                />
+                <span className="absolute top-2 right-2 text-[9px] uppercase tracking-widest text-cream bg-ink/60 px-1.5 py-0.5 rounded-sm">
+                  boomerang
+                </span>
+              </div>
             ) : (
               <video
                 src={it.media_url}
@@ -77,6 +91,15 @@ export default function Gallery({ items }: Props) {
             {open.media_type === 'photo' ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={open.media_url} alt="" className="w-full h-auto" />
+            ) : open.media_type === 'boomerang' ? (
+              <video
+                src={open.media_url}
+                className="w-full h-auto"
+                autoPlay
+                playsInline
+                loop
+                muted
+              />
             ) : (
               <video src={open.media_url} className="w-full h-auto" controls autoPlay playsInline />
             )}

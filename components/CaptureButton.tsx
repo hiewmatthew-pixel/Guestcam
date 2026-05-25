@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 type Props = {
-  mode: 'photo' | 'video';
+  mode: 'photo' | 'video' | 'boomerang';
   recording: boolean;
   maxSeconds?: number;
   onTap: () => void;
@@ -22,7 +22,7 @@ export default function CaptureButton({
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (mode === 'video' && recording) {
+    if ((mode === 'video' || mode === 'boomerang') && recording) {
       startRef.current = performance.now();
       const tick = () => {
         const now = performance.now();
@@ -71,7 +71,7 @@ export default function CaptureButton({
           strokeWidth={stroke}
           fill="none"
         />
-        {mode === 'video' && recording && (
+        {(mode === 'video' || mode === 'boomerang') && recording && (
           <circle
             cx={ringSize / 2}
             cy={ringSize / 2}
@@ -87,7 +87,7 @@ export default function CaptureButton({
       <span
         className={[
           'block rounded-full transition-all duration-200',
-          mode === 'video' && recording
+          (mode === 'video' || mode === 'boomerang') && recording
             ? 'bg-red-500 h-7 w-7 rounded-md'
             : 'bg-gold h-16 w-16',
         ].join(' ')}

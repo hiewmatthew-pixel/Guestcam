@@ -4,14 +4,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
-import FilteredCamera from '@/components/FilteredCamera';
+import FilteredCamera, { type CaptureMode } from '@/components/FilteredCamera';
 import FilterSelector from '@/components/FilterSelector';
 import CaptureButton from '@/components/CaptureButton';
+import StickerEditor, { type PlacedSticker } from '@/components/StickerEditor';
 import { FILTERS, FilterId } from '@/lib/filters';
 import { addSubmission, getEventBySlug, isDemoMode, setDemoMode } from '@/lib/demo-store';
 import { getSupabase, isSupabaseConfigured, type EventRow } from '@/lib/supabase';
 import { getTier } from '@/lib/tiers';
 import { cleanString, LIMITS } from '@/lib/validate';
+import { compositePhoto } from '@/lib/composite';
 
 type Stage = 'welcome' | 'capture' | 'review';
 
@@ -26,11 +28,12 @@ export default function EventCapturePage() {
   const [guestName, setGuestName] = useState('');
   const [filter, setFilter] = useState<FilterId>('portra-400');
   const [facing, setFacing] = useState<'user' | 'environment'>('environment');
-  const [mode, setMode] = useState<'photo' | 'video'>('photo');
+  const [mode, setMode] = useState<CaptureMode>('photo');
   const [recording, setRecording] = useState(false);
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
-  const [pendingType, setPendingType] = useState<'photo' | 'video'>('photo');
+  const [pendingType, setPendingType] = useState<'photo' | 'video' | 'boomerang'>('photo');
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+  const [stickers, setStickers] = useState<PlacedSticker[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submittedOk, setSubmittedOk] = useState(false);
   const [demo, setDemo] = useState<boolean>(true);
@@ -130,6 +133,10 @@ export default function EventCapturePage() {
       setMode('photo');
       setRecording(false);
     }
+    if (mode === 'boomerang' && !tier.features.allowBoomerang) {
+      setMode(tier.features.allowVideo ? 'video' : 'photo');
+      setRecording(false);
+    }
   }, [event, tier, filter, mode]);
 
   function onCaptureTap() {
@@ -146,15 +153,17 @@ export default function EventCapturePage() {
     setPendingBlob(blob);
     setPendingType('photo');
     setPendingUrl(url);
+    setStickers([]);
     setStage('review');
   }
 
-  function handleVideo(blob: Blob) {
+  function handleVideo(blob: Blob, kind: 'video' | 'boomerang') {
     const url = URL.createObjectURL(blob);
     setPendingBlob(blob);
-    setPendingType('video');
+    setPendingType(kind);
     setPendingUrl(url);
     setRecording(false);
+    setStickers([]);
     setStage('review');
   }
 
@@ -180,13 +189,26 @@ export default function EventCapturePage() {
 
     setSubmitting(true);
     try {
+      // Bake stickers into photos (videos/boomerangs in V1 are uploaded raw).
+      let uploadBlob = pendingBlob;
+      if (pendingType === 'photo' && stickers.length > 0) {
+        try {
+          uploadBlob = await compositePhoto(pendingBlob, stickers, {
+            couple_names: event.couple_names,
+            wedding_date: event.wedding_date,
+          });
+        } catch (e) {
+          console.warn('sticker composite failed, uploading raw:', e);
+        }
+      }
+
       const useSupabase = isSupabaseConfigured && !demo && event.id !== 'demo-event';
       if (useSupabase) {
         const sb = getSupabase()!;
         const ext = pendingType === 'photo' ? 'jpg' : 'webm';
         const path = `${event.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const up = await sb.storage.from('submissions').upload(path, pendingBlob, {
-          contentType: pendingBlob.type || (pendingType === 'photo' ? 'image/jpeg' : 'video/webm'),
+        const up = await sb.storage.from('submissions').upload(path, uploadBlob, {
+          contentType: uploadBlob.type || (pendingType === 'photo' ? 'image/jpeg' : 'video/webm'),
           upsert: false,
         });
         if (up.error) throw up.error;
@@ -203,7 +225,7 @@ export default function EventCapturePage() {
       } else {
         await addSubmission({
           event_id: event.id,
-          blob: pendingBlob,
+          blob: uploadBlob,
           media_type: pendingType,
           filter_name: filter,
           guest_name: cleanGuest,
@@ -384,8 +406,20 @@ export default function EventCapturePage() {
 
         <div className="flex-1 grid place-items-center p-4">
           {pendingType === 'photo' ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={pendingUrl} alt="" className="max-h-[70vh] w-auto" />
+            tier.features.stickerSet ? (
+              <StickerEditor
+                src={pendingUrl}
+                set={tier.features.stickerSet}
+                event={{
+                  couple_names: event?.couple_names,
+                  wedding_date: event?.wedding_date,
+                }}
+                onChange={setStickers}
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={pendingUrl} alt="" className="max-h-[70vh] w-auto" />
+            )
           ) : (
             <video
               src={pendingUrl}
@@ -468,8 +502,8 @@ export default function EventCapturePage() {
         <FilterSelector active={filter} onSelect={setFilter} allowed={tier.features.filters} />
 
         <div className="px-6 pt-2 flex items-center justify-between">
-          {/* mode toggle (video hidden on photo-only tiers) */}
-          {tier.features.allowVideo ? (
+          {/* mode toggle (video / boomerang hidden on tiers without them) */}
+          {tier.features.allowVideo || tier.features.allowBoomerang ? (
             <div className="flex gap-1 text-[10px] uppercase tracking-widest">
               <button
                 onClick={() => {
@@ -480,13 +514,34 @@ export default function EventCapturePage() {
               >
                 photo
               </button>
-              <span className="text-cream/30">/</span>
-              <button
-                onClick={() => setMode('video')}
-                className={mode === 'video' ? 'text-gold' : 'text-cream/60'}
-              >
-                video
-              </button>
+              {tier.features.allowVideo && (
+                <>
+                  <span className="text-cream/30">/</span>
+                  <button
+                    onClick={() => {
+                      setMode('video');
+                      setRecording(false);
+                    }}
+                    className={mode === 'video' ? 'text-gold' : 'text-cream/60'}
+                  >
+                    video
+                  </button>
+                </>
+              )}
+              {tier.features.allowBoomerang && (
+                <>
+                  <span className="text-cream/30">/</span>
+                  <button
+                    onClick={() => {
+                      setMode('boomerang');
+                      setRecording(false);
+                    }}
+                    className={mode === 'boomerang' ? 'text-gold' : 'text-cream/60'}
+                  >
+                    boomerang
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <span className="text-[10px] uppercase tracking-widest text-cream/40">
@@ -497,7 +552,7 @@ export default function EventCapturePage() {
           <CaptureButton
             mode={mode}
             recording={recording}
-            maxSeconds={15}
+            maxSeconds={mode === 'boomerang' ? 2 : 15}
             onTap={onCaptureTap}
           />
 

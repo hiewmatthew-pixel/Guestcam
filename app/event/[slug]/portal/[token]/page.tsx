@@ -224,9 +224,10 @@ export default function CouplePortalPage() {
     try {
       const zipped = items.map((it, i) => {
         const ext = it.media_type === 'photo' ? 'jpg' : 'webm';
+        const kind = it.media_type === 'boomerang' ? 'boomerang' : it.media_type;
         const filter = safeFilenamePart(it.filter_name);
         const who = safeFilenamePart(it.guest_name);
-        const name = `${String(i + 1).padStart(3, '0')}-${filter}-${who}.${ext}`;
+        const name = `${String(i + 1).padStart(3, '0')}-${kind}-${filter}-${who}.${ext}`;
         return { url: it.media_url, filename: name };
       });
       await downloadAsZip(zipped, `${slug}-gallery.zip`);

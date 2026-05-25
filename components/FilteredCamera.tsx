@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FilterId, VERTEX_SHADER, getFilter } from '@/lib/filters';
 
+export type CaptureMode = 'photo' | 'video' | 'boomerang';
+
 type Props = {
   filter: FilterId;
   facing: 'user' | 'environment';
   onPhotoCaptured: (blob: Blob) => void;
-  onVideoCaptured: (blob: Blob) => void;
-  mode: 'photo' | 'video';
+  onVideoCaptured: (blob: Blob, kind: 'video' | 'boomerang') => void;
+  mode: CaptureMode;
   recording: boolean;
   onRecorderError?: (msg: string) => void;
   onWebGLUnavailable?: () => void;
@@ -60,6 +62,7 @@ function classifyError(e: any): CameraError {
 }
 
 const MAX_VIDEO_SECONDS = 15;
+const MAX_BOOMERANG_SECONDS = 2;
 const MAX_VIDEO_HEIGHT = 720;
 
 export type FilteredCameraHandle = {
@@ -408,6 +411,7 @@ export default function FilteredCamera({
       return;
     }
 
+    const isBoomerang = mode === 'boomerang';
     recordedChunksRef.current = [];
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) recordedChunksRef.current.push(e.data);
@@ -416,16 +420,17 @@ export default function FilteredCamera({
       const type = recorder.mimeType || 'video/webm';
       const blob = new Blob(recordedChunksRef.current, { type });
       recordedChunksRef.current = [];
-      onVideoCaptured(blob);
+      onVideoCaptured(blob, isBoomerang ? 'boomerang' : 'video');
     };
     recorder.start(250);
     recorderRef.current = recorder;
 
+    const cap = isBoomerang ? MAX_BOOMERANG_SECONDS : MAX_VIDEO_SECONDS;
     if (videoStopTimerRef.current) clearTimeout(videoStopTimerRef.current);
     videoStopTimerRef.current = window.setTimeout(() => {
       stopRecordingInternal();
-    }, MAX_VIDEO_SECONDS * 1000);
-  }, [onRecorderError, onVideoCaptured]);
+    }, cap * 1000);
+  }, [onRecorderError, onVideoCaptured, mode]);
 
   const stopRecordingInternal = useCallback(() => {
     if (videoStopTimerRef.current) {
@@ -439,7 +444,7 @@ export default function FilteredCamera({
 
   // driven from parent via mode/recording props
   useEffect(() => {
-    if (mode === 'video') {
+    if (mode === 'video' || mode === 'boomerang') {
       if (recording) {
         startRecording();
       } else {
