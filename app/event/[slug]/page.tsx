@@ -501,67 +501,73 @@ export default function EventCapturePage() {
       <div className="bg-ink/95 pb-6">
         <FilterSelector active={filter} onSelect={setFilter} allowed={tier.features.filters} />
 
-        <div className="px-6 pt-2 flex items-center justify-between">
-          {/* mode toggle (video / boomerang hidden on tiers without them) */}
-          {tier.features.allowVideo || tier.features.allowBoomerang ? (
-            <div className="flex gap-1 text-[10px] uppercase tracking-widest">
-              <button
-                onClick={() => {
-                  setMode('photo');
-                  setRecording(false);
-                }}
-                className={mode === 'photo' ? 'text-gold' : 'text-cream/60'}
-              >
-                photo
-              </button>
-              {tier.features.allowVideo && (
-                <>
-                  <span className="text-cream/30">/</span>
-                  <button
-                    onClick={() => {
-                      setMode('video');
-                      setRecording(false);
-                    }}
-                    className={mode === 'video' ? 'text-gold' : 'text-cream/60'}
-                  >
-                    video
-                  </button>
-                </>
-              )}
-              {tier.features.allowBoomerang && (
-                <>
-                  <span className="text-cream/30">/</span>
-                  <button
-                    onClick={() => {
-                      setMode('boomerang');
-                      setRecording(false);
-                    }}
-                    className={mode === 'boomerang' ? 'text-gold' : 'text-cream/60'}
-                  >
-                    boomerang
-                  </button>
-                </>
-              )}
+        {/* mode toggle — own row, centered, segmented pill */}
+        {tier.features.allowVideo || tier.features.allowBoomerang ? (
+          <div className="px-6 pt-3 flex justify-center">
+            <div
+              role="tablist"
+              aria-label="capture mode"
+              className="inline-flex items-center gap-1 p-1 rounded-full border border-cream/15 bg-black/40"
+            >
+              {(
+                [
+                  { id: 'photo' as const, label: 'photo', show: true },
+                  { id: 'video' as const, label: 'video', show: tier.features.allowVideo },
+                  { id: 'boomerang' as const, label: 'boomerang', show: tier.features.allowBoomerang },
+                ] as const
+              )
+                .filter((m) => m.show)
+                .map((m) => {
+                  const active = mode === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => {
+                        setMode(m.id);
+                        setRecording(false);
+                      }}
+                      className={[
+                        'px-4 py-1.5 rounded-full text-[11px] uppercase tracking-widest transition-colors',
+                        active
+                          ? 'bg-gold text-ink font-medium shadow-[0_0_0_1px_rgba(184,149,106,0.6)]'
+                          : 'text-cream/65 hover:text-cream',
+                      ].join(' ')}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
             </div>
-          ) : (
-            <span className="text-[10px] uppercase tracking-widest text-cream/40">
-              photo
-            </span>
-          )}
+          </div>
+        ) : null}
 
-          <CaptureButton
-            mode={mode}
-            recording={recording}
-            maxSeconds={mode === 'boomerang' ? 2 : 15}
-            onTap={onCaptureTap}
-          />
+        <div className="px-6 pt-3 grid grid-cols-3 items-center">
+          {/* left spacer keeps the capture button visually centered */}
+          <span className="text-[10px] uppercase tracking-widest text-cream/40">
+            {mode === 'photo' && 'still'}
+            {mode === 'video' && 'up to 15s'}
+            {mode === 'boomerang' && 'loop · 2s'}
+          </span>
 
-          <Link
-            href={`/event/${slug}/gallery`}
-            className="text-[10px] uppercase tracking-widest text-cream/60"
-          >
-            gallery
-          </Link>
+          <div className="flex justify-center">
+            <CaptureButton
+              mode={mode}
+              recording={recording}
+              maxSeconds={mode === 'boomerang' ? 2 : 15}
+              onTap={onCaptureTap}
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <Link
+              href={`/event/${slug}/gallery`}
+              className="text-[10px] uppercase tracking-widest text-cream/60"
+            >
+              gallery
+            </Link>
+          </div>
         </div>
       </div>
     </main>
