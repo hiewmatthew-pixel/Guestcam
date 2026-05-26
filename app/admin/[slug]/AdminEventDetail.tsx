@@ -203,6 +203,14 @@ export default function AdminEventDetail({ slug }: Props) {
             label={`${captureUrl.replace(/^https?:\/\//, '')}`}
             fileName={`${slug}-qr.png`}
           />
+          <a
+            href={`/event/${slug}/qr`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-block text-[10px] uppercase tracking-widest text-ink/70 underline decoration-gold/60 underline-offset-4 hover:text-ink"
+          >
+            open print-ready 4×6 table card
+          </a>
         </div>
 
         <div>

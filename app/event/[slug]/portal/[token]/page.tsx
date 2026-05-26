@@ -310,6 +310,14 @@ export default function CouplePortalPage() {
               Print this on your table cards. Each guest scans, the camera opens —
               no app, no account.
             </p>
+            <a
+              href={`/event/${slug}/qr`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-block text-[10px] uppercase tracking-widest text-ink/70 underline decoration-gold/60 underline-offset-4 hover:text-ink"
+            >
+              open print-ready 4×6 table card
+            </a>
           </div>
 
           <div className="md:pt-8">
