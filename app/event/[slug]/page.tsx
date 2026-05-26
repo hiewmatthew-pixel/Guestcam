@@ -37,6 +37,7 @@ export default function EventCapturePage() {
   const [stickers, setStickers] = useState<PlacedSticker[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submittedOk, setSubmittedOk] = useState(false);
+  const [savingLocal, setSavingLocal] = useState(false);
   const [demo, setDemo] = useState<boolean>(true);
   const [inIframe, setInIframe] = useState(false);
 
@@ -166,6 +167,50 @@ export default function EventCapturePage() {
     setRecording(false);
     setStickers([]);
     setStage('review');
+  }
+
+  function slugifyName(s: string) {
+    return s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .slice(0, 40) || 'glance';
+  }
+
+  async function saveToPhone() {
+    if (!pendingBlob || !event) return;
+    setSavingLocal(true);
+    try {
+      let outBlob = pendingBlob;
+      let ext = pendingType === 'photo' ? 'jpg' : 'webm';
+      if (pendingType === 'photo') {
+        try {
+          outBlob = await compositePhoto(
+            pendingBlob,
+            stickers,
+            {
+              couple_names: event.couple_names,
+              wedding_date: event.wedding_date,
+            },
+            { burnCoupleOverlay: tier.features.customCoupleOverlay },
+          );
+        } catch {
+          // fall back to raw blob if composite fails
+        }
+      }
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const fname = `glance-${slugifyName(event.couple_names)}-${stamp}.${ext}`;
+      const url = URL.createObjectURL(outBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } finally {
+      setSavingLocal(false);
+    }
   }
 
   async function submitPending() {
@@ -457,13 +502,22 @@ export default function EventCapturePage() {
               Your moment is saved ✦
             </p>
           ) : (
-            <button
-              onClick={submitPending}
-              disabled={submitting}
-              className="w-full bg-gold text-ink py-4 rounded-sm text-xs uppercase tracking-widest disabled:opacity-60"
-            >
-              {submitting ? 'sending…' : 'send to the couple'}
-            </button>
+            <>
+              <button
+                onClick={submitPending}
+                disabled={submitting}
+                className="w-full bg-gold text-ink py-4 rounded-sm text-xs uppercase tracking-widest disabled:opacity-60"
+              >
+                {submitting ? 'sending…' : 'send to the couple'}
+              </button>
+              <button
+                onClick={saveToPhone}
+                disabled={submitting || savingLocal}
+                className="mt-3 w-full text-[10px] uppercase tracking-widest text-cream/70 hover:text-cream py-2 disabled:opacity-60"
+              >
+                {savingLocal ? 'preparing…' : 'save to my photos'}
+              </button>
+            </>
           )}
         </div>
       </main>
