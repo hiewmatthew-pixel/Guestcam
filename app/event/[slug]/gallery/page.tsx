@@ -147,7 +147,7 @@ export default function EventGalleryPage() {
         </Link>
       </header>
 
-      <Gallery items={items} />
+      <Gallery items={items} eventId={event.id} coupleNames={event.couple_names} />
     </main>
   );
 }

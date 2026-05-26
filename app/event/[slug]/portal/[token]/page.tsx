@@ -378,7 +378,7 @@ export default function CouplePortalPage() {
             updates as guests capture
           </p>
         </div>
-        <Gallery items={items} />
+        <Gallery items={items} eventId={event?.id} coupleNames={event?.couple_names} />
       </section>
 
       <footer className="px-6 py-8 text-center text-[10px] tracking-widest uppercase text-ink/40 border-t border-warm-gray-light">

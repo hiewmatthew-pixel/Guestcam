@@ -302,7 +302,7 @@ export default function AdminEventDetail({ slug }: Props) {
         <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-6 text-center">
           recent moments
         </p>
-        <Gallery items={items} />
+        <Gallery items={items} eventId={event.id} coupleNames={event.couple_names} />
       </div>
     </div>
   );
