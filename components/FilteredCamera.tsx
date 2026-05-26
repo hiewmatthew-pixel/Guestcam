@@ -275,7 +275,11 @@ export default function FilteredCamera({
         setVideoPlaying(false);
 
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
           video: {
             facingMode: facing,
             width: { ideal: 1280 },
@@ -433,6 +437,19 @@ export default function FilteredCamera({
     if (!captureStream) {
       onRecorderError?.('Video recording not supported on this device.');
       return;
+    }
+
+    // Attach the microphone track only for full video. Boomerangs loop
+    // in the gallery so audio would be jarring; keep them silent.
+    if (mode === 'video') {
+      const micTracks = streamRef.current?.getAudioTracks() ?? [];
+      for (const t of micTracks) {
+        try {
+          captureStream.addTrack(t);
+        } catch {
+          /* track may already be attached — ignore */
+        }
+      }
     }
 
     // pick a supported mime type
