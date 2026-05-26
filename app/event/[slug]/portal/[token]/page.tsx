@@ -65,6 +65,8 @@ export default function CouplePortalPage() {
             'A small note from us — capture anything that makes you smile tonight.',
           tier: 'signature',
           manage_token: 'demo-portal',
+          reveal_at: null,
+          auto_approve: true,
           created_at: new Date().toISOString(),
         };
         setEvent(demoEvent);

@@ -9,6 +9,10 @@ export type TierFeatures = {
   allowBoomerang: boolean;
   stickerSet: StickerSetId | null;
   customCoupleOverlay: boolean;
+  // disposable-camera-style: hide the guest gallery until the couple's
+  // chosen reveal time (the couple's portal still always shows the
+  // gallery, since this is anticipation theatre, not access control).
+  revealMode: boolean;
   galleryDays: number;
   customBranding: boolean;
   prioritySupport: boolean;
@@ -53,6 +57,7 @@ export const TIERS: Record<TierId, TierDef> = {
       allowBoomerang: false,
       stickerSet: 'essential',
       customCoupleOverlay: false,
+      revealMode: false,
       galleryDays: 7,
       customBranding: false,
       prioritySupport: false,
@@ -80,6 +85,7 @@ export const TIERS: Record<TierId, TierDef> = {
       allowBoomerang: true,
       stickerSet: 'full',
       customCoupleOverlay: false,
+      revealMode: true,
       galleryDays: 30,
       customBranding: false,
       prioritySupport: false,
@@ -105,6 +111,7 @@ export const TIERS: Record<TierId, TierDef> = {
       allowBoomerang: true,
       stickerSet: 'full-with-custom',
       customCoupleOverlay: true,
+      revealMode: true,
       galleryDays: 365,
       customBranding: true,
       prioritySupport: true,

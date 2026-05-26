@@ -39,6 +39,7 @@ export default function AdminEventList() {
   const [tier, setTier] = useState<TierId>(
     TIER_LIST.some((t) => t.id === initialTier) ? initialTier : DEFAULT_TIER,
   );
+  const [revealAt, setRevealAt] = useState('');  // datetime-local string, empty = no reveal lock
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -68,6 +69,7 @@ export default function AdminEventList() {
     const slug = `${toSlug(coupleNames)}-${weddingDate.slice(0, 4)}`;
     setBusy(true);
     try {
+      const revealIso = revealAt ? new Date(revealAt).toISOString() : null;
       if (demo || !isSupabaseConfigured) {
         createEvent({
           slug,
@@ -82,12 +84,14 @@ export default function AdminEventList() {
           wedding_date: weddingDate,
           welcome_message: welcome,
           tier,
+          reveal_at: revealIso,
         });
         if (!res.ok) throw new Error(res.error);
       }
       setCoupleNames('');
       setWeddingDate('');
       setWelcome('');
+      setRevealAt('');
       setTier(DEFAULT_TIER);
       await refresh();
     } catch (e: any) {
@@ -214,6 +218,24 @@ export default function AdminEventList() {
             })}
           </div>
         </div>
+        {getTier(tier).features.revealMode && (
+          <div>
+            <label className="block text-[10px] uppercase tracking-widest text-ink/60 mb-2">
+              reveal at <span className="text-ink/40 lowercase">(optional · disposable-camera mode)</span>
+            </label>
+            <input
+              type="datetime-local"
+              value={revealAt}
+              onChange={(e) => setRevealAt(e.target.value)}
+              className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2"
+            />
+            <p className="mt-2 text-[11px] text-ink/55 leading-relaxed">
+              Until this time the public gallery shows guests a soft countdown
+              instead of the photos — like a roll of film developing overnight.
+              You and the couple still see everything via the portal at any time.
+            </p>
+          </div>
+        )}
         {err && <p className="text-sm text-red-700">{err}</p>}
         <button
           disabled={busy}

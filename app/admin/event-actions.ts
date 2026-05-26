@@ -5,13 +5,15 @@ import { requireAdmin } from './actions';
 import { getSupabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase-admin';
 import { generateManageToken } from '@/lib/tokens';
 import { cleanString, LIMITS, toSlug, ValidationError } from '@/lib/validate';
-import { TIER_LIST, DEFAULT_TIER, type TierId } from '@/lib/tiers';
+import { TIER_LIST, DEFAULT_TIER, getTier, type TierId } from '@/lib/tiers';
 
 type CreateInput = {
   couple_names: string;
   wedding_date: string; // YYYY-MM-DD
   welcome_message?: string | null;
   tier?: string;
+  reveal_at?: string | null;       // ISO timestamp, optional
+  auto_approve?: boolean;          // defaults true
 };
 
 function isValidDate(s: string): boolean {
@@ -44,6 +46,14 @@ export async function createEventAction(
     const slug = toSlug(couple_names, wedding_date.slice(0, 4));
     if (!slug || slug.length > LIMITS.SLUG) throw new ValidationError('Could not build a slug from the names.');
 
+    // reveal_at is only honoured on tiers that include the reveal feature
+    let reveal_at: string | null = null;
+    if (input.reveal_at && getTier(tier).features.revealMode) {
+      const ts = new Date(input.reveal_at);
+      if (!Number.isNaN(ts.getTime())) reveal_at = ts.toISOString();
+    }
+    const auto_approve = input.auto_approve === false ? false : true;
+
     const sb = getSupabaseAdmin()!;
     const { error } = await sb.from('events').insert({
       slug,
@@ -52,6 +62,8 @@ export async function createEventAction(
       welcome_message,
       tier,
       manage_token: generateManageToken(),
+      reveal_at,
+      auto_approve,
     });
     if (error) {
       if (error.code === '23505') {

@@ -25,6 +25,8 @@ export default function EventQRPrintPage() {
         welcome_message: null,
         tier: 'signature',
         manage_token: 'demo-portal',
+        reveal_at: null,
+        auto_approve: true,
         created_at: new Date().toISOString(),
       });
       return;

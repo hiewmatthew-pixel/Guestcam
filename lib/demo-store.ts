@@ -77,6 +77,8 @@ export function createEvent(input: {
     welcome_message: input.welcome_message ?? null,
     tier: input.tier ?? 'signature',
     manage_token: generateManageToken(),
+    reveal_at: null,
+    auto_approve: true,
     created_at: new Date().toISOString(),
   };
   write(EVENTS_KEY, [row, ...events]);

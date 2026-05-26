@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import Gallery from '@/components/Gallery';
+import RevealCountdown from '@/components/RevealCountdown';
 import {
   getEventBySlug,
   isDemoMode,
@@ -40,6 +41,8 @@ export default function EventGalleryPage() {
           welcome_message: null,
           tier: 'signature',
           manage_token: 'demo-portal',
+          reveal_at: null,
+          auto_approve: true,
           created_at: new Date().toISOString(),
         };
         setEvent(demoEvent);
@@ -147,7 +150,15 @@ export default function EventGalleryPage() {
         </Link>
       </header>
 
-      <Gallery items={items} eventId={event.id} coupleNames={event.couple_names} />
+      {event.reveal_at && new Date(event.reveal_at).getTime() > Date.now() ? (
+        <RevealCountdown
+          revealAt={event.reveal_at}
+          coupleNames={event.couple_names}
+          guestCount={items.length}
+        />
+      ) : (
+        <Gallery items={items} eventId={event.id} coupleNames={event.couple_names} />
+      )}
     </main>
   );
 }

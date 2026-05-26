@@ -79,6 +79,8 @@ create table if not exists public.events (
   welcome_message text,
   tier text not null default 'signature' check (tier in ('glimpse', 'signature', 'studio')),
   manage_token text not null,
+  reveal_at timestamptz,
+  auto_approve boolean not null default true,
   created_at timestamptz not null default now()
 );
 create index if not exists events_manage_token_idx on public.events(manage_token);
@@ -92,14 +94,18 @@ create index if not exists events_manage_token_idx on public.events(manage_token
 -- to extend the media_type allowlist if you already created submissions:
 -- alter table public.submissions drop constraint if exists submissions_media_type_check;
 -- alter table public.submissions add constraint submissions_media_type_check
---   check (media_type in ('photo', 'video', 'boomerang'));
+--   check (media_type in ('photo', 'video', 'boomerang', 'voice'));
+--
+-- to add reveal_at + auto_approve if events already existed:
+-- alter table public.events add column if not exists reveal_at timestamptz;
+-- alter table public.events add column if not exists auto_approve boolean not null default true;
 
 -- submissions
 create table if not exists public.submissions (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.events(id) on delete cascade,
   media_url text not null,
-  media_type text not null check (media_type in ('photo', 'video', 'boomerang')),
+  media_type text not null check (media_type in ('photo', 'video', 'boomerang', 'voice')),
   filter_name text not null,
   guest_name text,
   approved boolean not null default true,
@@ -128,13 +134,32 @@ create policy "approved submissions readable by anyone"
 create policy "anon can insert submissions"
   on public.submissions for insert
   with check (
-    media_type in ('photo', 'video', 'boomerang')
+    media_type in ('photo', 'video', 'boomerang', 'voice')
     and exists (select 1 from public.events e where e.id = event_id)
   );
 
+-- per-photo comments (guests can write short text against a submission)
+create table if not exists public.comments (
+  id uuid primary key default gen_random_uuid(),
+  submission_id uuid not null references public.submissions(id) on delete cascade,
+  event_id uuid not null references public.events(id) on delete cascade,
+  guest_name text,
+  body text not null check (char_length(body) between 1 and 280),
+  created_at timestamptz not null default now()
+);
+create index if not exists comments_submission_idx on public.comments(submission_id);
+create index if not exists comments_event_idx on public.comments(event_id);
+alter table public.comments enable row level security;
+create policy "comments readable by anyone" on public.comments for select using (true);
+create policy "anon can insert comments" on public.comments for insert
+  with check (
+    char_length(body) between 1 and 280
+    and exists (select 1 from public.submissions s where s.id = submission_id)
+  );
+
 -- intentionally NO policy for anon INSERT/UPDATE/DELETE on events,
--- and NO policy for anon UPDATE/DELETE on submissions. service_role
--- bypasses RLS, so the server actions still work.
+-- and NO policy for anon UPDATE/DELETE on submissions/comments.
+-- service_role bypasses RLS so server actions still work.
 ```
 
 > **Why no anon policies for event mutations?** The anon key ships in the

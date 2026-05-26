@@ -26,10 +26,12 @@ export type EventRow = {
   welcome_message: string | null;
   tier: string;
   manage_token: string;
+  reveal_at: string | null;
+  auto_approve: boolean;
   created_at: string;
 };
 
-export type MediaType = 'photo' | 'video' | 'boomerang';
+export type MediaType = 'photo' | 'video' | 'boomerang' | 'voice';
 
 export type SubmissionRow = {
   id: string;
@@ -39,5 +41,14 @@ export type SubmissionRow = {
   filter_name: string;
   guest_name: string | null;
   approved: boolean;
+  created_at: string;
+};
+
+export type CommentRow = {
+  id: string;
+  submission_id: string;
+  event_id: string;
+  guest_name: string | null;
+  body: string;
   created_at: string;
 };
