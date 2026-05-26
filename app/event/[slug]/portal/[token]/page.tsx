@@ -318,6 +318,14 @@ export default function CouplePortalPage() {
             >
               open print-ready 4×6 table card
             </a>
+            <a
+              href={`/event/${slug}/display`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-block text-[10px] uppercase tracking-widest text-ink/70 underline decoration-gold/60 underline-offset-4 hover:text-ink"
+            >
+              open slideshow on a tv / projector
+            </a>
           </div>
 
           <div className="md:pt-8">
