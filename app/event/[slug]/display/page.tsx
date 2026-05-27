@@ -11,12 +11,14 @@ import {
 import {
   getSupabase,
   isSupabaseConfigured,
+  labelForMediaType,
   type EventRow,
   type SubmissionRow,
 } from '@/lib/supabase';
 
 const PHOTO_DURATION_MS = 6000;
-const VIDEO_MIN_DURATION_MS = 4000;
+// boomerangs loop forever; advance after they've played for a beat.
+const BOOMERANG_DURATION_MS = 6000;
 
 export default function DisplaySlideshowPage() {
   const params = useParams<{ slug: string }>();
@@ -91,7 +93,32 @@ export default function DisplaySlideshowPage() {
             },
             (payload) => {
               const row = payload.new as SubmissionRow;
-              if (row.approved) setItems((cur) => [row, ...cur]);
+              if (row.approved) {
+                setItems((cur) =>
+                  cur.some((c) => c.id === row.id) ? cur : [row, ...cur],
+                );
+              }
+            },
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'submissions',
+              filter: `event_id=eq.${(ev as EventRow).id}`,
+            },
+            (payload) => {
+              const row = payload.new as SubmissionRow;
+              setItems((cur) => {
+                const has = cur.some((c) => c.id === row.id);
+                if (row.approved) {
+                  return has
+                    ? cur.map((c) => (c.id === row.id ? row : c))
+                    : [row, ...cur];
+                }
+                return has ? cur.filter((c) => c.id !== row.id) : cur;
+              });
             },
           )
           .subscribe();
@@ -108,9 +135,9 @@ export default function DisplaySlideshowPage() {
     };
   }, [slug]);
 
-  // playable items (skip voice / audio-only items if any exist later)
+  // playable items — the TV slideshow can't render voice notes
   const playable = useMemo(
-    () => items.filter((it) => it.media_type !== ('voice' as any)),
+    () => items.filter((it) => it.media_type !== 'voice'),
     [items],
   );
 
@@ -129,22 +156,29 @@ export default function DisplaySlideshowPage() {
     );
   }, [playable.length]);
 
-  // schedule the next advance
+  // schedule the next advance. Keyed on the current item's identity so
+  // a realtime insert that grows `playable` doesn't restart the timer
+  // for the slide that's currently on screen.
+  //   - photos:    timer-driven (6s)
+  //   - boomerang: timer-driven (6s, loops in background)
+  //   - video:     <video onEnded> drives advance; no timer needed.
+  const currentId = playable[idx]?.id;
+  const currentKind = playable[idx]?.media_type;
   useEffect(() => {
     if (timerRef.current) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    if (paused || playable.length === 0) return;
-    const cur = playable[idx];
-    if (!cur) return;
-    const ms = cur.media_type === 'photo' ? PHOTO_DURATION_MS : VIDEO_MIN_DURATION_MS;
-    // for videos we additionally let the <video onEnded> trigger advance.
+    if (paused || !currentId) return;
+    let ms = 0;
+    if (currentKind === 'photo') ms = PHOTO_DURATION_MS;
+    else if (currentKind === 'boomerang') ms = BOOMERANG_DURATION_MS;
+    else return; // 'video' — onEnded drives it
     timerRef.current = window.setTimeout(advance, ms) as unknown as number;
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
-  }, [idx, playable, paused, advance]);
+  }, [currentId, currentKind, paused, advance]);
 
   // keyboard controls
   useEffect(() => {
@@ -174,6 +208,24 @@ export default function DisplaySlideshowPage() {
     return (
       <main className="min-h-screen grid place-items-center bg-black text-cream">
         <p className="font-serif italic text-cream/60">loading…</p>
+      </main>
+    );
+  }
+
+  // honour the reveal lock — the slideshow URL is public, so during the
+  // disposable-camera window we render the same hush message guests get.
+  if (event.reveal_at && new Date(event.reveal_at).getTime() > Date.now()) {
+    return (
+      <main className="min-h-screen grid place-items-center bg-black text-cream text-center px-8">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.4em] text-cream/55">
+            still developing
+          </p>
+          <p className="mt-6 font-serif italic text-5xl">{event.couple_names}</p>
+          <p className="mt-4 text-cream/65">
+            the gallery is being kept in the dark until the couple opens it.
+          </p>
+        </div>
       </main>
     );
   }
@@ -293,8 +345,4 @@ function ControlsHint() {
   );
 }
 
-function labelFor(t: SubmissionRow['media_type']) {
-  if (t === 'photo') return 'photo';
-  if (t === 'boomerang') return 'boomerang';
-  return 'film';
-}
+const labelFor = labelForMediaType;

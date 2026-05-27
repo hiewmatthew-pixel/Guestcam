@@ -108,12 +108,9 @@ export default function EventCapturePage() {
     };
   }, [slug]);
 
-  // clean up preview URL when leaving review
-  useEffect(() => {
-    return () => {
-      if (pendingUrl) URL.revokeObjectURL(pendingUrl);
-    };
-  }, [pendingUrl]);
+  // pendingUrl is revoked explicitly in retake() / submitPending(); a
+  // generic effect cleanup here would revoke the URL on every change
+  // and (worse) on the StrictMode double-mount of the just-set URL.
 
   const dateLabel = useMemo(() => {
     if (!event) return '';

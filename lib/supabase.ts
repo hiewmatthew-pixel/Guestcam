@@ -33,6 +33,13 @@ export type EventRow = {
 
 export type MediaType = 'photo' | 'video' | 'boomerang' | 'voice';
 
+export function labelForMediaType(t: MediaType): string {
+  if (t === 'photo') return 'photo';
+  if (t === 'boomerang') return 'boomerang';
+  if (t === 'voice') return 'voice note';
+  return 'film';
+}
+
 export type SubmissionRow = {
   id: string;
   event_id: string;

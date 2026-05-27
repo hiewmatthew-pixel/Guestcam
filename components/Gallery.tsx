@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { SubmissionRow } from '@/lib/supabase';
+import { labelForMediaType, type SubmissionRow } from '@/lib/supabase';
 import { isFavorite, listFavorites, toggleFavorite } from '@/lib/favorites';
 import { shareMedia, type ShareResult } from '@/lib/share';
 import CommentThread from '@/components/CommentThread';
@@ -64,7 +64,7 @@ export default function Gallery({
 
   const counts = useMemo(() => {
     const c = {
-      all: visibleItems.filter((it) => it.approved).length,
+      all: 0,
       photo: 0,
       video: 0,
       boomerang: 0,
@@ -73,12 +73,15 @@ export default function Gallery({
       pending: 0,
     };
     for (const it of visibleItems) {
+      // favourites are counted regardless of approval — a moderator who
+      // hearts a pending capture shouldn't see the count vanish.
+      if (favs.has(it.id)) c.favourites++;
       if (it.approved) {
+        c.all++;
         if (it.media_type === 'photo') c.photo++;
         else if (it.media_type === 'video') c.video++;
         else if (it.media_type === 'boomerang') c.boomerang++;
         else if (it.media_type === 'voice') c.voice++;
-        if (favs.has(it.id)) c.favourites++;
       } else if (canModerate) {
         c.pending++;
       }
@@ -88,11 +91,17 @@ export default function Gallery({
 
   const filtered = useMemo(() => {
     if (filter === 'pending') return visibleItems.filter((it) => !it.approved);
+    // Favourites tab shows BOTH approved and pending favourites when the
+    // viewer can moderate, otherwise approved-only.
+    if (filter === 'favourites') {
+      return visibleItems.filter(
+        (it) => favs.has(it.id) && (canModerate || it.approved),
+      );
+    }
     const approved = visibleItems.filter((it) => it.approved);
     if (filter === 'all') return approved;
-    if (filter === 'favourites') return approved.filter((it) => favs.has(it.id));
     return approved.filter((it) => it.media_type === filter);
-  }, [visibleItems, filter, favs]);
+  }, [visibleItems, filter, favs, canModerate]);
 
   function flash(msg: string) {
     setToast(msg);
@@ -471,9 +480,4 @@ function ActionButton({
   );
 }
 
-function labelFor(t: SubmissionRow['media_type']) {
-  if (t === 'photo') return 'photo';
-  if (t === 'boomerang') return 'boomerang';
-  if (t === 'voice') return 'voice note';
-  return 'film';
-}
+const labelFor = labelForMediaType;

@@ -22,17 +22,24 @@ function breakdown(ms: number) {
 }
 
 export default function RevealCountdown({ revealAt, coupleNames, guestCount }: Props) {
-  const target = new Date(revealAt).getTime();
+  // Guard against unparseable timestamps (e.g. Postgres returning
+  // 'YYYY-MM-DD HH:MM:SS' without a 'T' or 'Z' which Safari rejects).
+  const parsed = new Date(revealAt).getTime();
+  const targetValid = !Number.isNaN(parsed);
+  const target = targetValid ? parsed : Date.now();
   const [remaining, setRemaining] = useState(() => target - Date.now());
 
   useEffect(() => {
+    if (!targetValid) return;
     const tick = () => setRemaining(target - Date.now());
     tick();
     const i = window.setInterval(tick, 1000);
     return () => window.clearInterval(i);
-  }, [target]);
+  }, [target, targetValid]);
 
-  const { days, hours, minutes, seconds } = breakdown(remaining);
+  const { days, hours, minutes, seconds } = breakdown(
+    targetValid ? remaining : 0,
+  );
   const revealDate = (() => {
     try {
       const d = new Date(revealAt);

@@ -26,14 +26,23 @@ export default function VoiceRecorder({ guestName, onSubmit, onCancel }: Props) 
   const startedAtRef = useRef<number>(0);
   const stopTimerRef = useRef<number | null>(null);
   const tickRef = useRef<number | null>(null);
+  // mirror previewUrl into a ref so the unmount cleanup sees the
+  // latest value (the deps-[] cleanup would otherwise close over null)
+  const previewUrlRef = useRef<string | null>(null);
+  // guard async MediaRecorder.onstop from setState after unmount
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    previewUrlRef.current = previewUrl;
+  }, [previewUrl]);
 
   // tear down on unmount
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
       stopAllInternal();
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function stopAllInternal() {
@@ -88,12 +97,17 @@ export default function VoiceRecorder({ guestName, onSubmit, onCancel }: Props) 
         const type = rec.mimeType || 'audio/webm';
         const out = new Blob(chunksRef.current, { type });
         chunksRef.current = [];
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        if (!mountedRef.current) {
+          // component already torn down — don't even build a blob URL
+          return;
+        }
         const url = URL.createObjectURL(out);
+        previewUrlRef.current = url;
         setBlob(out);
         setPreviewUrl(url);
         setPhase('preview');
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
       };
       rec.start(250);
       recorderRef.current = rec;
@@ -150,9 +164,11 @@ export default function VoiceRecorder({ guestName, onSubmit, onCancel }: Props) 
     try {
       await onSubmit(blob, elapsed);
     } catch (e: any) {
-      setError(e?.message || 'Could not send your voice note.');
+      if (mountedRef.current) {
+        setError(e?.message || 'Could not send your voice note.');
+      }
     } finally {
-      setSubmitting(false);
+      if (mountedRef.current) setSubmitting(false);
     }
   }
 

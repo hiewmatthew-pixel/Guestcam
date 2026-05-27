@@ -290,12 +290,28 @@ export default function CouplePortalPage() {
     }
   }
 
+  // approved-only view of items. items itself includes pending so the
+  // couple can moderate; the headline counter and ZIP download should
+  // exclude anything they hid, and the ZIP extension should match the
+  // actual bytes (voice notes on iOS are mp4/m4a, not webm).
+  const approvedItems = items.filter((it) => it.approved);
+
+  function extensionFor(it: SubmissionRow): string {
+    if (it.media_type === 'photo') return 'jpg';
+    if (it.media_type === 'voice') {
+      // try to detect from the stored URL; the mime type isn't on the row
+      const m = it.media_url.match(/\.([a-z0-9]+)(?:\?|$)/i);
+      return m ? m[1].toLowerCase() : 'webm';
+    }
+    return 'webm';
+  }
+
   async function handleDownloadZip() {
-    if (items.length === 0) return;
+    if (approvedItems.length === 0) return;
     setDownloading(true);
     try {
-      const zipped = items.map((it, i) => {
-        const ext = it.media_type === 'photo' ? 'jpg' : 'webm';
+      const zipped = approvedItems.map((it, i) => {
+        const ext = extensionFor(it);
         const kind = it.media_type === 'boomerang' ? 'boomerang' : it.media_type;
         const filter = safeFilenamePart(it.filter_name);
         const who = safeFilenamePart(it.guest_name);
@@ -405,12 +421,17 @@ export default function CouplePortalPage() {
               moments captured
             </p>
             <p className="font-serif italic text-6xl text-ink mt-1 leading-none">
-              {items.length}
+              {approvedItems.length}
             </p>
+            {items.length > approvedItems.length && (
+              <p className="mt-2 text-[10px] uppercase tracking-widest text-gold/85">
+                · {items.length - approvedItems.length} pending review
+              </p>
+            )}
 
             <button
               onClick={handleDownloadZip}
-              disabled={downloading || items.length === 0}
+              disabled={downloading || approvedItems.length === 0}
               className="mt-8 bg-ink text-cream py-3 px-5 text-xs uppercase tracking-widest disabled:opacity-50 block"
             >
               {downloading ? 'preparing zip…' : 'download all as zip'}

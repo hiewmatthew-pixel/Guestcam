@@ -109,6 +109,9 @@ export default function FilteredCamera({
   const startedAtRef = useRef<number>(0);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
+  // Mic is acquired only while recording video — keeps the OS mic
+  // indicator dark during photo and boomerang capture.
+  const micStreamRef = useRef<MediaStream | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const videoStopTimerRef = useRef<number | null>(null);
   const videoPlayingRef = useRef<boolean>(false);
@@ -275,11 +278,7 @@ export default function FilteredCamera({
         setVideoPlaying(false);
 
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
+          audio: false,
           video: {
             facingMode: facing,
             width: { ideal: 1280 },
@@ -439,16 +438,31 @@ export default function FilteredCamera({
       return;
     }
 
-    // Attach the microphone track only for full video. Boomerangs loop
-    // in the gallery so audio would be jarring; keep them silent.
+    // Attach the microphone only for full video. Boomerangs loop in the
+    // gallery so audio would be jarring; keep them silent. The mic is
+    // requested on demand so the OS mic indicator stays dark during
+    // photo / boomerang capture, and a guest who denies mic permission
+    // can still record a silent video instead of losing the camera.
     if (mode === 'video') {
-      const micTracks = streamRef.current?.getAudioTracks() ?? [];
-      for (const t of micTracks) {
-        try {
-          captureStream.addTrack(t);
-        } catch {
-          /* track may already be attached — ignore */
+      try {
+        const mic = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        });
+        micStreamRef.current = mic;
+        for (const t of mic.getAudioTracks()) {
+          try {
+            captureStream.addTrack(t);
+          } catch {
+            /* already attached */
+          }
         }
+      } catch {
+        // mic denied or unavailable — proceed with a silent recording
       }
     }
 
@@ -510,6 +524,9 @@ export default function FilteredCamera({
     const rec = recorderRef.current;
     if (rec && rec.state !== 'inactive') rec.stop();
     recorderRef.current = null;
+    // release the mic immediately so the OS indicator goes dark
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    micStreamRef.current = null;
   }, []);
 
   // driven from parent via mode/recording props
