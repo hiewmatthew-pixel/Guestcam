@@ -9,6 +9,7 @@ import {
   isDemoMode,
   listSubmissions,
   rotateManageToken,
+  setSubmissionApproval,
   subscribeToSubmissions,
 } from '@/lib/demo-store';
 import {
@@ -20,7 +21,10 @@ import {
 import { downloadAsZip } from '@/lib/zip';
 import { formatPriceCAD, getTier } from '@/lib/tiers';
 import { safeFilenamePart } from '@/lib/validate';
-import { rotateTokenAction } from '../event-actions';
+import {
+  adminSetSubmissionApprovedAction,
+  rotateTokenAction,
+} from '../event-actions';
 
 type Props = { slug: string };
 
@@ -77,7 +81,23 @@ export default function AdminEventDetail({ slug }: Props) {
                 filter: `event_id=eq.${(ev as EventRow).id}`,
               },
               (payload) => {
-                setItems((curr) => [payload.new as SubmissionRow, ...curr]);
+                const r = payload.new as SubmissionRow;
+                setItems((curr) =>
+                  curr.some((c) => c.id === r.id) ? curr : [r, ...curr],
+                );
+              },
+            )
+            .on(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'submissions',
+                filter: `event_id=eq.${(ev as EventRow).id}`,
+              },
+              (payload) => {
+                const r = payload.new as SubmissionRow;
+                setItems((curr) => curr.map((c) => (c.id === r.id ? r : c)));
               },
             )
             .subscribe();
@@ -136,6 +156,25 @@ export default function AdminEventDetail({ slug }: Props) {
       } else {
         alert(res.error);
       }
+    }
+  }
+
+  async function handleSetApproved(submissionId: string, approved: boolean) {
+    const prev = items;
+    setItems((cur) =>
+      cur.map((c) => (c.id === submissionId ? { ...c, approved } : c)),
+    );
+    if (isSupabaseConfigured && !isDemoMode() && event && event.id !== 'demo-event') {
+      const res = await adminSetSubmissionApprovedAction({
+        submission_id: submissionId,
+        approved,
+      });
+      if (!res.ok) {
+        alert(res.error || 'Could not update.');
+        setItems(prev);
+      }
+    } else {
+      setSubmissionApproval(submissionId, approved);
     }
   }
 
@@ -310,7 +349,13 @@ export default function AdminEventDetail({ slug }: Props) {
         <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-6 text-center">
           recent moments
         </p>
-        <Gallery items={items} eventId={event.id} coupleNames={event.couple_names} />
+        <Gallery
+          items={items}
+          eventId={event.id}
+          coupleNames={event.couple_names}
+          canModerate
+          onSetApproved={handleSetApproved}
+        />
       </div>
     </div>
   );

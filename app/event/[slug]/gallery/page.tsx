@@ -46,8 +46,10 @@ export default function EventGalleryPage() {
           created_at: new Date().toISOString(),
         };
         setEvent(demoEvent);
-        setItems(listSubmissions('demo-event'));
-        unsub = subscribeToSubmissions('demo-event', setItems);
+        const onChange = (rows: SubmissionRow[]) =>
+          setItems(rows.filter((r) => r.approved));
+        onChange(listSubmissions('demo-event'));
+        unsub = subscribeToSubmissions('demo-event', onChange);
         setLoading(false);
         return;
       }
@@ -55,8 +57,10 @@ export default function EventGalleryPage() {
       const local = getEventBySlug(slug);
       if (local) {
         setEvent(local);
-        setItems(listSubmissions(local.id));
-        unsub = subscribeToSubmissions(local.id, setItems);
+        const onChange = (rows: SubmissionRow[]) =>
+          setItems(rows.filter((r) => r.approved));
+        onChange(listSubmissions(local.id));
+        unsub = subscribeToSubmissions(local.id, onChange);
         setLoading(false);
         return;
       }
@@ -96,7 +100,32 @@ export default function EventGalleryPage() {
             },
             (payload) => {
               const row = payload.new as SubmissionRow;
-              if (row.approved) setItems((curr) => [row, ...curr]);
+              if (row.approved) {
+                setItems((curr) =>
+                  curr.some((c) => c.id === row.id) ? curr : [row, ...curr],
+                );
+              }
+            },
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'submissions',
+              filter: `event_id=eq.${(ev as EventRow).id}`,
+            },
+            (payload) => {
+              const row = payload.new as SubmissionRow;
+              setItems((curr) => {
+                const has = curr.some((c) => c.id === row.id);
+                if (row.approved) {
+                  return has
+                    ? curr.map((c) => (c.id === row.id ? row : c))
+                    : [row, ...curr];
+                }
+                return has ? curr.filter((c) => c.id !== row.id) : curr;
+              });
             },
           )
           .subscribe();

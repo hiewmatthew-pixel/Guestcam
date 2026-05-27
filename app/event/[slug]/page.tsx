@@ -239,7 +239,7 @@ export default function EventCapturePage() {
         media_type: 'voice',
         filter_name: '—',
         guest_name: cleanGuest,
-        approved: true,
+        approved: event.auto_approve !== false,
       });
       if (insert.error) throw insert.error;
     } else {
@@ -249,6 +249,7 @@ export default function EventCapturePage() {
         media_type: 'voice',
         filter_name: '—',
         guest_name: cleanGuest,
+        approved: event.auto_approve !== false,
       });
     }
 
@@ -318,7 +319,7 @@ export default function EventCapturePage() {
           media_type: pendingType,
           filter_name: filter,
           guest_name: cleanGuest,
-          approved: true,
+          approved: event.auto_approve !== false,
         });
         if (insert.error) throw insert.error;
       } else {
@@ -328,6 +329,7 @@ export default function EventCapturePage() {
           media_type: pendingType,
           filter_name: filter,
           guest_name: cleanGuest,
+          approved: event.auto_approve !== false,
         });
       }
       setSubmittedOk(true);

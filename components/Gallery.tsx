@@ -11,9 +11,14 @@ type Props = {
   // when omitted, falls back to the first item's event_id (legacy callers)
   eventId?: string;
   coupleNames?: string;
+  // when true, the viewer can approve / hide items. Pending items are
+  // visible only to these viewers; everyone else's gallery filters them
+  // out at the data layer.
+  canModerate?: boolean;
+  onSetApproved?: (submissionId: string, approved: boolean) => Promise<void> | void;
 };
 
-type Filter = 'all' | 'photo' | 'video' | 'boomerang' | 'voice' | 'favourites';
+type Filter = 'all' | 'photo' | 'video' | 'boomerang' | 'voice' | 'favourites' | 'pending';
 
 const TAB_LABELS: Record<Filter, string> = {
   all: 'all',
@@ -22,9 +27,16 @@ const TAB_LABELS: Record<Filter, string> = {
   boomerang: 'boomerangs',
   voice: 'voice notes',
   favourites: 'favourites',
+  pending: 'pending',
 };
 
-export default function Gallery({ items, eventId, coupleNames }: Props) {
+export default function Gallery({
+  items,
+  eventId,
+  coupleNames,
+  canModerate = false,
+  onSetApproved,
+}: Props) {
   const ev = eventId ?? items[0]?.event_id ?? '';
 
   const [open, setOpen] = useState<SubmissionRow | null>(null);
@@ -44,23 +56,43 @@ export default function Gallery({ items, eventId, coupleNames }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // viewers without moderation power never see unapproved items in any tab
+  const visibleItems = useMemo(
+    () => (canModerate ? items : items.filter((it) => it.approved)),
+    [items, canModerate],
+  );
+
   const counts = useMemo(() => {
-    const c = { all: items.length, photo: 0, video: 0, boomerang: 0, voice: 0, favourites: 0 };
-    for (const it of items) {
-      if (it.media_type === 'photo') c.photo++;
-      else if (it.media_type === 'video') c.video++;
-      else if (it.media_type === 'boomerang') c.boomerang++;
-      else if (it.media_type === 'voice') c.voice++;
-      if (favs.has(it.id)) c.favourites++;
+    const c = {
+      all: visibleItems.filter((it) => it.approved).length,
+      photo: 0,
+      video: 0,
+      boomerang: 0,
+      voice: 0,
+      favourites: 0,
+      pending: 0,
+    };
+    for (const it of visibleItems) {
+      if (it.approved) {
+        if (it.media_type === 'photo') c.photo++;
+        else if (it.media_type === 'video') c.video++;
+        else if (it.media_type === 'boomerang') c.boomerang++;
+        else if (it.media_type === 'voice') c.voice++;
+        if (favs.has(it.id)) c.favourites++;
+      } else if (canModerate) {
+        c.pending++;
+      }
     }
     return c;
-  }, [items, favs]);
+  }, [visibleItems, favs, canModerate]);
 
   const filtered = useMemo(() => {
-    if (filter === 'all') return items;
-    if (filter === 'favourites') return items.filter((it) => favs.has(it.id));
-    return items.filter((it) => it.media_type === filter);
-  }, [items, filter, favs]);
+    if (filter === 'pending') return visibleItems.filter((it) => !it.approved);
+    const approved = visibleItems.filter((it) => it.approved);
+    if (filter === 'all') return approved;
+    if (filter === 'favourites') return approved.filter((it) => favs.has(it.id));
+    return approved.filter((it) => it.media_type === filter);
+  }, [visibleItems, filter, favs]);
 
   function flash(msg: string) {
     setToast(msg);
@@ -77,6 +109,16 @@ export default function Gallery({ items, eventId, coupleNames }: Props) {
       return next;
     });
     flash(added ? 'saved to favourites' : 'removed from favourites');
+  }
+
+  async function onModerate(it: SubmissionRow, approve: boolean) {
+    if (!onSetApproved) return;
+    try {
+      await onSetApproved(it.id, approve);
+      flash(approve ? 'approved' : 'hidden');
+    } catch {
+      flash('could not update');
+    }
   }
 
   async function onShare(it: SubmissionRow) {
@@ -109,29 +151,37 @@ export default function Gallery({ items, eventId, coupleNames }: Props) {
       {/* Tabs */}
       <div className="sticky top-0 z-30 bg-cream/90 backdrop-blur supports-[backdrop-filter]:bg-cream/75 border-b border-ink/10">
         <div className="px-3 py-2 flex gap-1 overflow-x-auto no-scrollbar">
-          {(Object.keys(TAB_LABELS) as Filter[]).map((f) => {
-            const active = filter === f;
-            const n = counts[f];
-            const isFavTab = f === 'favourites';
-            return (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={[
-                  'shrink-0 px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest transition-colors',
-                  active
-                    ? 'bg-ink text-cream'
-                    : 'bg-transparent text-ink/65 hover:text-ink',
-                ].join(' ')}
-              >
-                {isFavTab && <span className="mr-1">♥</span>}
-                {TAB_LABELS[f]}
-                <span className={active ? 'ml-1.5 text-cream/70' : 'ml-1.5 text-ink/40'}>
-                  {n}
-                </span>
-              </button>
-            );
-          })}
+          {(Object.keys(TAB_LABELS) as Filter[])
+            .filter((f) => f !== 'pending' || canModerate)
+            .map((f) => {
+              const active = filter === f;
+              const n = counts[f];
+              const isFavTab = f === 'favourites';
+              const isPendingTab = f === 'pending';
+              return (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={[
+                    'shrink-0 px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest transition-colors',
+                    active
+                      ? isPendingTab
+                        ? 'bg-gold text-ink'
+                        : 'bg-ink text-cream'
+                      : isPendingTab && n > 0
+                        ? 'bg-gold/10 text-ink border border-gold'
+                        : 'bg-transparent text-ink/65 hover:text-ink',
+                  ].join(' ')}
+                >
+                  {isFavTab && <span className="mr-1">♥</span>}
+                  {isPendingTab && <span className="mr-1">⚑</span>}
+                  {TAB_LABELS[f]}
+                  <span className={active ? 'ml-1.5 text-cream/70' : 'ml-1.5 text-ink/40'}>
+                    {n}
+                  </span>
+                </button>
+              );
+            })}
         </div>
       </div>
 
@@ -157,6 +207,9 @@ export default function Gallery({ items, eventId, coupleNames }: Props) {
               favourited={favs.has(it.id)}
               onFavourite={() => onToggleFav(it)}
               onShare={() => onShare(it)}
+              canModerate={canModerate}
+              onApprove={() => onModerate(it, true)}
+              onHide={() => onModerate(it, false)}
             />
           ))}
         </div>
@@ -253,13 +306,20 @@ function Tile({
   favourited,
   onFavourite,
   onShare,
+  canModerate = false,
+  onApprove,
+  onHide,
 }: {
   item: SubmissionRow;
   onOpen: () => void;
   favourited: boolean;
   onFavourite: () => void;
   onShare: () => void;
+  canModerate?: boolean;
+  onApprove?: () => void;
+  onHide?: () => void;
 }) {
+  const isPending = !item.approved;
   return (
     <div className="mb-3 group relative overflow-hidden rounded-sm bg-warm-gray-light/40 break-inside-avoid">
       <button onClick={onOpen} className="block w-full" aria-label="open">
@@ -314,6 +374,11 @@ function Tile({
               {labelFor(item.media_type)}
             </span>
           )}
+          {isPending && (
+            <span className="absolute top-2 right-2 text-[9px] uppercase tracking-widest text-ink bg-gold px-1.5 py-0.5 rounded-sm">
+              pending
+            </span>
+          )}
         </div>
 
         {/* attribution bar (always visible — that was the request) */}
@@ -325,8 +390,14 @@ function Tile({
         </div>
       </button>
 
-      {/* tile actions: heart + share */}
+      {/* tile actions */}
       <div className="absolute bottom-9 right-2 flex gap-1 opacity-90">
+        {canModerate && isPending && onApprove && (
+          <TileIcon onClick={onApprove} label="approve" glyph="✓" active />
+        )}
+        {canModerate && !isPending && onHide && (
+          <TileIcon onClick={onHide} label="hide" glyph="⤫" />
+        )}
         <TileIcon
           onClick={onFavourite}
           active={favourited}

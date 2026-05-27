@@ -103,6 +103,30 @@ export async function deleteEventAction(
   }
 }
 
+export async function adminSetSubmissionApprovedAction(input: {
+  submission_id: string;
+  approved: boolean;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await requireAdmin();
+    if (!isSupabaseAdminConfigured) {
+      return { ok: false, error: 'Supabase service role key is not configured on the server.' };
+    }
+    const id = String(input.submission_id || '').slice(0, 80);
+    if (!id) return { ok: false, error: 'Bad submission id.' };
+    const sb = getSupabaseAdmin()!;
+    const { error } = await sb
+      .from('submissions')
+      .update({ approved: !!input.approved })
+      .eq('id', id);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e: any) {
+    if (e?.message === 'Not authorized.') return { ok: false, error: 'Not authorized.' };
+    return { ok: false, error: 'Could not update.' };
+  }
+}
+
 export async function rotateTokenAction(
   id: string,
 ): Promise<{ ok: true; manage_token: string } | { ok: false; error: string }> {

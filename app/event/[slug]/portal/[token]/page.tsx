@@ -10,6 +10,7 @@ import {
   getEventBySlug,
   isDemoMode,
   listSubmissions,
+  setSubmissionApproval,
   subscribeToSubmissions,
   updateEvent,
 } from '@/lib/demo-store';
@@ -22,7 +23,11 @@ import {
 import { downloadAsZip } from '@/lib/zip';
 import { getTier } from '@/lib/tiers';
 import { constantTimeEqual, LIMITS, safeFilenamePart } from '@/lib/validate';
-import { updateWelcomeAction } from './actions';
+import {
+  updateWelcomeAction,
+  setSubmissionApprovedAction,
+  setAutoApproveAction,
+} from './actions';
 
 type Access = 'loading' | 'ok' | 'denied' | 'missing';
 
@@ -113,11 +118,11 @@ export default function CouplePortalPage() {
         setEvent(row);
         setWelcomeDraft(row.welcome_message ?? '');
 
+        // portal: couple sees every submission, approved or pending
         const { data: subs } = await sb
           .from('submissions')
           .select('*')
           .eq('event_id', row.id)
-          .eq('approved', true)
           .order('created_at', { ascending: false });
         if (!cancelled) setItems((subs ?? []) as SubmissionRow[]);
 
@@ -133,7 +138,22 @@ export default function CouplePortalPage() {
             },
             (payload) => {
               const r = payload.new as SubmissionRow;
-              if (r.approved) setItems((curr) => [r, ...curr]);
+              setItems((curr) =>
+                curr.some((c) => c.id === r.id) ? curr : [r, ...curr],
+              );
+            },
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'submissions',
+              filter: `event_id=eq.${row.id}`,
+            },
+            (payload) => {
+              const r = payload.new as SubmissionRow;
+              setItems((curr) => curr.map((c) => (c.id === r.id ? r : c)));
             },
           )
           .subscribe();
@@ -217,6 +237,56 @@ export default function CouplePortalPage() {
       }
     } finally {
       setSavingWelcome(false);
+    }
+  }
+
+  async function handleAutoApproveToggle(next: boolean) {
+    if (!event) return;
+    const local = getEventBySlug(slug);
+    if (local) {
+      updateEvent(local.id, { auto_approve: next });
+      setEvent({ ...event, auto_approve: next });
+      return;
+    }
+    if (isSupabaseConfigured && !isDemoMode() && event.id !== 'demo-event') {
+      const res = await setAutoApproveAction({ slug, token, auto_approve: next });
+      if (!res.ok) {
+        alert(res.error || 'Could not save.');
+        return;
+      }
+      setEvent({ ...event, auto_approve: next });
+    } else {
+      setEvent({ ...event, auto_approve: next });
+    }
+  }
+
+  async function handleSetApproved(submissionId: string, approved: boolean) {
+    if (!event) return;
+    const prev = items;
+    setItems((cur) =>
+      cur.map((c) => (c.id === submissionId ? { ...c, approved } : c)),
+    );
+    const local = getEventBySlug(slug);
+    if (local) {
+      setSubmissionApproval(submissionId, approved);
+      return;
+    }
+    // for the always-on demo event, also write through to the local store
+    if (event.id === 'demo-event') {
+      setSubmissionApproval(submissionId, approved);
+      return;
+    }
+    if (isSupabaseConfigured && !isDemoMode() && event.id !== 'demo-event') {
+      const res = await setSubmissionApprovedAction({
+        slug,
+        token,
+        submission_id: submissionId,
+        approved,
+      });
+      if (!res.ok) {
+        alert(res.error || 'Could not update.');
+        setItems(prev);
+      }
     }
   }
 
@@ -359,31 +429,57 @@ export default function CouplePortalPage() {
         </div>
       </section>
 
-      {/* Welcome message editor */}
+      {/* Welcome message + moderation editors */}
       <section className="px-6 pb-10">
-        <div className="max-w-2xl mx-auto border-t border-warm-gray-light pt-10">
-          <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-3">
-            welcome message for your guests
-          </p>
-          <textarea
-            value={welcomeDraft}
-            onChange={(e) => setWelcomeDraft(e.target.value)}
-            maxLength={LIMITS.WELCOME_MESSAGE}
-            rows={3}
-            placeholder="A short note your guests will see before they open the camera…"
-            className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2 resize-none"
-          />
-          <div className="mt-3 flex items-center gap-3">
-            <button
-              onClick={saveWelcome}
-              disabled={savingWelcome}
-              className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5 disabled:opacity-50"
-            >
-              {savingWelcome ? 'saving…' : 'save'}
-            </button>
-            {welcomeSaved && (
-              <span className="font-serif italic text-ink/60 text-sm">saved ✦</span>
-            )}
+        <div className="max-w-2xl mx-auto border-t border-warm-gray-light pt-10 space-y-8">
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-3">
+              welcome message for your guests
+            </p>
+            <textarea
+              value={welcomeDraft}
+              onChange={(e) => setWelcomeDraft(e.target.value)}
+              maxLength={LIMITS.WELCOME_MESSAGE}
+              rows={3}
+              placeholder="A short note your guests will see before they open the camera…"
+              className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2 resize-none"
+            />
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                onClick={saveWelcome}
+                disabled={savingWelcome}
+                className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5 disabled:opacity-50"
+              >
+                {savingWelcome ? 'saving…' : 'save'}
+              </button>
+              {welcomeSaved && (
+                <span className="font-serif italic text-ink/60 text-sm">saved ✦</span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-1">
+                approve new captures automatically
+              </p>
+              <p className="text-xs text-ink/55 leading-relaxed max-w-md">
+                When this is on, every guest's photo appears in the gallery
+                straight away. Turn it off and new captures wait here for you
+                to approve or hide before the rest of the gallery sees them.
+              </p>
+            </div>
+            <label className="shrink-0 inline-flex items-center cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={event?.auto_approve !== false}
+                onChange={(e) => handleAutoApproveToggle(e.target.checked)}
+              />
+              <span className="w-11 h-6 bg-warm-gray-light rounded-full peer-checked:bg-gold transition-colors relative">
+                <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-cream rounded-full shadow transition-transform peer-checked:translate-x-5" />
+              </span>
+            </label>
           </div>
         </div>
       </section>
@@ -396,7 +492,13 @@ export default function CouplePortalPage() {
             updates as guests capture
           </p>
         </div>
-        <Gallery items={items} eventId={event?.id} coupleNames={event?.couple_names} />
+        <Gallery
+          items={items}
+          eventId={event?.id}
+          coupleNames={event?.couple_names}
+          canModerate
+          onSetApproved={handleSetApproved}
+        />
       </section>
 
       <footer className="px-6 py-8 text-center text-[10px] tracking-widest uppercase text-ink/40 border-t border-warm-gray-light">

@@ -87,7 +87,7 @@ export function createEvent(input: {
 
 export function updateEvent(
   id: string,
-  patch: Partial<Pick<EventRow, 'welcome_message' | 'manage_token'>>,
+  patch: Partial<Pick<EventRow, 'welcome_message' | 'manage_token' | 'auto_approve' | 'reveal_at'>>,
 ): EventRow | null {
   const events = listEvents();
   const idx = events.findIndex((e) => e.id === id);
@@ -119,12 +119,27 @@ export function listSubmissions(eventId: string): SubmissionRow[] {
     .sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
 }
 
+export function setSubmissionApproval(submissionId: string, approved: boolean) {
+  const all = listAllSubmissions();
+  const next = all.map((s) =>
+    s.id === submissionId ? { ...s, approved } : s,
+  );
+  write(SUBS_KEY, next);
+  if (typeof window !== 'undefined') {
+    const row = next.find((s) => s.id === submissionId);
+    if (row) {
+      window.dispatchEvent(new CustomEvent('ggc:submission-update', { detail: row }));
+    }
+  }
+}
+
 export async function addSubmission(input: {
   event_id: string;
   blob: Blob;
   media_type: 'photo' | 'video' | 'boomerang' | 'voice';
   filter_name: string;
   guest_name?: string | null;
+  approved?: boolean;
 }): Promise<SubmissionRow> {
   // store as base64 data URL so it survives reload
   const dataUrl = await blobToDataUrl(input.blob);
@@ -135,7 +150,7 @@ export async function addSubmission(input: {
     media_type: input.media_type,
     filter_name: input.filter_name,
     guest_name: input.guest_name ?? null,
-    approved: true,
+    approved: input.approved !== false,
     created_at: new Date().toISOString(),
   };
   const all = listAllSubmissions();
@@ -164,8 +179,10 @@ export function subscribeToSubmissions(
   const handler = () => onChange(listSubmissions(eventId));
   window.addEventListener('storage', handler);
   window.addEventListener('ggc:submission', handler as EventListener);
+  window.addEventListener('ggc:submission-update', handler as EventListener);
   return () => {
     window.removeEventListener('storage', handler);
     window.removeEventListener('ggc:submission', handler as EventListener);
+    window.removeEventListener('ggc:submission-update', handler as EventListener);
   };
 }
