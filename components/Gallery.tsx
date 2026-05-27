@@ -12,13 +12,14 @@ type Props = {
   coupleNames?: string;
 };
 
-type Filter = 'all' | 'photo' | 'video' | 'boomerang' | 'favourites';
+type Filter = 'all' | 'photo' | 'video' | 'boomerang' | 'voice' | 'favourites';
 
 const TAB_LABELS: Record<Filter, string> = {
   all: 'all',
   photo: 'photos',
   video: 'films',
   boomerang: 'boomerangs',
+  voice: 'voice notes',
   favourites: 'favourites',
 };
 
@@ -43,11 +44,12 @@ export default function Gallery({ items, eventId, coupleNames }: Props) {
   }, []);
 
   const counts = useMemo(() => {
-    const c = { all: items.length, photo: 0, video: 0, boomerang: 0, favourites: 0 };
+    const c = { all: items.length, photo: 0, video: 0, boomerang: 0, voice: 0, favourites: 0 };
     for (const it of items) {
       if (it.media_type === 'photo') c.photo++;
       else if (it.media_type === 'video') c.video++;
       else if (it.media_type === 'boomerang') c.boomerang++;
+      else if (it.media_type === 'voice') c.voice++;
       if (favs.has(it.id)) c.favourites++;
     }
     return c;
@@ -181,6 +183,19 @@ export default function Gallery({ items, eventId, coupleNames }: Props) {
                 loop
                 muted
               />
+            ) : open.media_type === 'voice' ? (
+              <div className="bg-warm-gray-light/20 border border-cream/15 rounded-sm p-8 text-center">
+                <div className="w-20 h-20 mx-auto rounded-full bg-gold/90 grid place-items-center">
+                  <span className="text-ink text-3xl leading-none">♪</span>
+                </div>
+                <p className="mt-5 font-serif italic text-4xl text-cream">
+                  {open.guest_name ?? 'anonymous'}
+                </p>
+                <p className="mt-2 text-[10px] uppercase tracking-[0.35em] text-cream/55">
+                  a voice note
+                </p>
+                <audio src={open.media_url} controls autoPlay className="mt-8 w-full" />
+              </div>
             ) : (
               <video src={open.media_url} className="w-full h-auto" controls autoPlay playsInline />
             )}
@@ -258,6 +273,20 @@ function Tile({
               autoPlay
               loop
             />
+          ) : item.media_type === 'voice' ? (
+            <div className="aspect-[3/2] bg-gradient-to-br from-warm-gray-light to-warm-gray-light/60 grid place-items-center px-4 py-6">
+              <div className="text-center">
+                <div className="w-14 h-14 mx-auto rounded-full bg-gold/90 grid place-items-center">
+                  <span className="text-ink text-2xl leading-none">♪</span>
+                </div>
+                <p className="mt-3 font-serif italic text-xl text-ink leading-snug">
+                  {item.guest_name ?? 'anonymous'}
+                </p>
+                <p className="mt-1 text-[10px] uppercase tracking-widest text-ink/55">
+                  voice note
+                </p>
+              </div>
+            </div>
           ) : (
             <video
               src={item.media_url}
@@ -271,8 +300,8 @@ function Tile({
               onMouseLeave={(e) => (e.currentTarget as HTMLVideoElement).pause()}
             />
           )}
-          {/* media-type tag */}
-          {item.media_type !== 'photo' && (
+          {/* media-type tag (skip on voice — the tile is already self-identifying) */}
+          {item.media_type !== 'photo' && item.media_type !== 'voice' && (
             <span className="absolute top-2 left-2 text-[9px] uppercase tracking-widest text-cream bg-ink/65 px-1.5 py-0.5 rounded-sm">
               {labelFor(item.media_type)}
             </span>
@@ -366,5 +395,6 @@ function ActionButton({
 function labelFor(t: SubmissionRow['media_type']) {
   if (t === 'photo') return 'photo';
   if (t === 'boomerang') return 'boomerang';
+  if (t === 'voice') return 'voice note';
   return 'film';
 }

@@ -122,7 +122,7 @@ export function listSubmissions(eventId: string): SubmissionRow[] {
 export async function addSubmission(input: {
   event_id: string;
   blob: Blob;
-  media_type: 'photo' | 'video' | 'boomerang';
+  media_type: 'photo' | 'video' | 'boomerang' | 'voice';
   filter_name: string;
   guest_name?: string | null;
 }): Promise<SubmissionRow> {

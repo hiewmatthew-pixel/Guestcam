@@ -9,6 +9,7 @@ import FilterSelector from '@/components/FilterSelector';
 import CaptureButton from '@/components/CaptureButton';
 import StickerEditor, { type PlacedSticker } from '@/components/StickerEditor';
 import CoupleOverlay from '@/components/CoupleOverlay';
+import VoiceRecorder from '@/components/VoiceRecorder';
 import { FILTERS, FilterId } from '@/lib/filters';
 import { addSubmission, getEventBySlug, isDemoMode, setDemoMode } from '@/lib/demo-store';
 import { getSupabase, isSupabaseConfigured, type EventRow } from '@/lib/supabase';
@@ -38,6 +39,8 @@ export default function EventCapturePage() {
   const [submitting, setSubmitting] = useState(false);
   const [submittedOk, setSubmittedOk] = useState(false);
   const [savingLocal, setSavingLocal] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceSent, setVoiceSent] = useState(false);
   const [demo, setDemo] = useState<boolean>(true);
   const [inIframe, setInIframe] = useState(false);
 
@@ -213,6 +216,45 @@ export default function EventCapturePage() {
     } finally {
       setSavingLocal(false);
     }
+  }
+
+  async function submitVoice(blob: Blob, _durationSec: number) {
+    if (!event) return;
+    const cleanGuest = cleanString(guestName, LIMITS.GUEST_NAME) || null;
+    const useSupabase = isSupabaseConfigured && !demo && event.id !== 'demo-event';
+
+    if (useSupabase) {
+      const sb = getSupabase()!;
+      const ext = blob.type.includes('mp4') ? 'm4a' : 'webm';
+      const path = `${event.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const up = await sb.storage.from('submissions').upload(path, blob, {
+        contentType: blob.type || 'audio/webm',
+        upsert: false,
+      });
+      if (up.error) throw up.error;
+      const { data: pub } = sb.storage.from('submissions').getPublicUrl(path);
+      const insert = await sb.from('submissions').insert({
+        event_id: event.id,
+        media_url: pub.publicUrl,
+        media_type: 'voice',
+        filter_name: '—',
+        guest_name: cleanGuest,
+        approved: true,
+      });
+      if (insert.error) throw insert.error;
+    } else {
+      await addSubmission({
+        event_id: event.id,
+        blob,
+        media_type: 'voice',
+        filter_name: '—',
+        guest_name: cleanGuest,
+      });
+    }
+
+    setVoiceOpen(false);
+    setVoiceSent(true);
+    setTimeout(() => setVoiceSent(false), 2400);
   }
 
   async function submitPending() {
@@ -421,6 +463,29 @@ export default function EventCapturePage() {
             >
               open the camera
             </button>
+
+            {tier.features.allowVideo && !voiceOpen && (
+              <button
+                onClick={() => setVoiceOpen(true)}
+                className="mt-3 w-full border border-ink/15 text-ink py-3 rounded-sm text-[11px] uppercase tracking-widest hover:border-gold/60 transition-colors"
+              >
+                ♪  leave a voice note instead
+              </button>
+            )}
+            {voiceSent && (
+              <p className="mt-4 font-serif italic text-xl text-gold-soft">
+                your voice note is on its way ✦
+              </p>
+            )}
+            {voiceOpen && (
+              <div className="mt-6 text-left">
+                <VoiceRecorder
+                  guestName={cleanString(guestName, LIMITS.GUEST_NAME) || undefined}
+                  onSubmit={submitVoice}
+                  onCancel={() => setVoiceOpen(false)}
+                />
+              </div>
+            )}
 
             <div className="mt-6 flex items-center justify-center gap-4 text-[10px] uppercase tracking-widest text-ink/40">
               <Link href={`/event/${slug}/gallery`} className="hover:text-ink/70">
