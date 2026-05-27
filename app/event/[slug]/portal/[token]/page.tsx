@@ -406,14 +406,16 @@ export default function CouplePortalPage() {
             >
               open print-ready 4×6 table card
             </a>
-            <a
-              href={`/event/${slug}/display`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-block text-[10px] uppercase tracking-widest text-ink/70 underline decoration-gold/60 underline-offset-4 hover:text-ink"
-            >
-              open slideshow on a tv / projector
-            </a>
+            {event && getTier(event.tier).features.liveSlideshow && (
+              <a
+                href={`/event/${slug}/display`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-[10px] uppercase tracking-widest text-ink/70 underline decoration-gold/60 underline-offset-4 hover:text-ink"
+              >
+                open slideshow on a tv / projector
+              </a>
+            )}
           </div>
 
           <div className="md:pt-8">
@@ -479,29 +481,31 @@ export default function CouplePortalPage() {
             </div>
           </div>
 
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-1">
-                approve new captures automatically
-              </p>
-              <p className="text-xs text-ink/55 leading-relaxed max-w-md">
-                When this is on, every guest's photo appears in the gallery
-                straight away. Turn it off and new captures wait here for you
-                to approve or hide before the rest of the gallery sees them.
-              </p>
+          {event && getTier(event.tier).features.moderationQueue && (
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-1">
+                  approve new captures automatically
+                </p>
+                <p className="text-xs text-ink/55 leading-relaxed max-w-md">
+                  When this is on, every guest's photo appears in the gallery
+                  straight away. Turn it off and new captures wait here for you
+                  to approve or hide before the rest of the gallery sees them.
+                </p>
+              </div>
+              <label className="shrink-0 inline-flex items-center cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={event?.auto_approve !== false}
+                  onChange={(e) => handleAutoApproveToggle(e.target.checked)}
+                />
+                <span className="w-11 h-6 bg-warm-gray-light rounded-full peer-checked:bg-gold transition-colors relative">
+                  <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-cream rounded-full shadow transition-transform peer-checked:translate-x-5" />
+                </span>
+              </label>
             </div>
-            <label className="shrink-0 inline-flex items-center cursor-pointer select-none">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={event?.auto_approve !== false}
-                onChange={(e) => handleAutoApproveToggle(e.target.checked)}
-              />
-              <span className="w-11 h-6 bg-warm-gray-light rounded-full peer-checked:bg-gold transition-colors relative">
-                <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-cream rounded-full shadow transition-transform peer-checked:translate-x-5" />
-              </span>
-            </label>
-          </div>
+          )}
         </div>
       </section>
 
@@ -519,6 +523,7 @@ export default function CouplePortalPage() {
           coupleNames={event?.couple_names}
           canModerate
           onSetApproved={handleSetApproved}
+          showComments={event ? getTier(event.tier).features.comments : true}
         />
       </section>
 

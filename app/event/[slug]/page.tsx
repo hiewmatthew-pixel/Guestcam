@@ -463,7 +463,7 @@ export default function EventCapturePage() {
               open the camera
             </button>
 
-            {tier.features.allowVideo && !voiceOpen && (
+            {tier.features.voiceNotes && !voiceOpen && (
               <button
                 onClick={() => setVoiceOpen(true)}
                 className="mt-3 w-full border border-ink/15 text-ink py-3 rounded-sm text-[11px] uppercase tracking-widest hover:border-gold/60 transition-colors"

@@ -16,6 +16,9 @@ type Props = {
   // out at the data layer.
   canModerate?: boolean;
   onSetApproved?: (submissionId: string, approved: boolean) => Promise<void> | void;
+  // controls per-photo comment thread in the lightbox; defaults true
+  // so legacy callers keep their old behaviour.
+  showComments?: boolean;
 };
 
 type Filter = 'all' | 'photo' | 'video' | 'boomerang' | 'voice' | 'favourites' | 'pending';
@@ -36,6 +39,7 @@ export default function Gallery({
   coupleNames,
   canModerate = false,
   onSetApproved,
+  showComments = true,
 }: Props) {
   const ev = eventId ?? items[0]?.event_id ?? '';
 
@@ -231,7 +235,12 @@ export default function Gallery({
           onClick={() => setOpen(null)}
         >
           <div
-            className="max-w-5xl w-full grid md:grid-cols-[minmax(0,1fr)_320px] gap-6 md:gap-8 items-start"
+            className={[
+              'max-w-5xl w-full grid gap-6 md:gap-8 items-start',
+              showComments && ev
+                ? 'md:grid-cols-[minmax(0,1fr)_320px]'
+                : '',
+            ].join(' ')}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="min-w-0">
@@ -288,7 +297,7 @@ export default function Gallery({
               </div>
             </div>
             </div>
-            {ev && (
+            {ev && showComments && (
               <aside className="bg-cream/5 border border-cream/10 rounded-sm p-4 md:max-h-[80vh] md:overflow-y-auto">
                 <CommentThread eventId={ev} submissionId={open.id} />
               </aside>

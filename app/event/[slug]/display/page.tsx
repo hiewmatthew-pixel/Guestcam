@@ -15,6 +15,7 @@ import {
   type EventRow,
   type SubmissionRow,
 } from '@/lib/supabase';
+import { getTier } from '@/lib/tiers';
 
 const PHOTO_DURATION_MS = 6000;
 // boomerangs loop forever; advance after they've played for a beat.
@@ -208,6 +209,26 @@ export default function DisplaySlideshowPage() {
     return (
       <main className="min-h-screen grid place-items-center bg-black text-cream">
         <p className="font-serif italic text-cream/60">loading…</p>
+      </main>
+    );
+  }
+
+  // gate by tier — slideshow is a Signature+ feature
+  if (!getTier(event.tier).features.liveSlideshow) {
+    return (
+      <main className="min-h-screen grid place-items-center bg-black text-cream text-center px-8">
+        <div className="max-w-md">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-cream/55">
+            slideshow mode
+          </p>
+          <p className="mt-6 font-serif italic text-4xl">
+            available on Signature and Studio
+          </p>
+          <p className="mt-4 text-cream/65 leading-relaxed">
+            The reception slideshow projects every guest's capture as it
+            arrives. Upgrade your event to turn it on.
+          </p>
+        </div>
       </main>
     );
   }

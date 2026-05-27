@@ -355,6 +355,7 @@ export default function AdminEventDetail({ slug }: Props) {
           coupleNames={event.couple_names}
           canModerate
           onSetApproved={handleSetApproved}
+          showComments={getTier(event.tier).features.comments}
         />
       </div>
     </div>

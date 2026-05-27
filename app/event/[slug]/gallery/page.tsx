@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import Gallery from '@/components/Gallery';
 import RevealCountdown from '@/components/RevealCountdown';
+import { getTier } from '@/lib/tiers';
 import {
   getEventBySlug,
   isDemoMode,
@@ -186,7 +187,12 @@ export default function EventGalleryPage() {
           guestCount={items.length}
         />
       ) : (
-        <Gallery items={items} eventId={event.id} coupleNames={event.couple_names} />
+        <Gallery
+          items={items}
+          eventId={event.id}
+          coupleNames={event.couple_names}
+          showComments={getTier(event.tier).features.comments}
+        />
       )}
     </main>
   );

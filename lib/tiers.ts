@@ -13,6 +13,16 @@ export type TierFeatures = {
   // chosen reveal time (the couple's portal still always shows the
   // gallery, since this is anticipation theatre, not access control).
   revealMode: boolean;
+  // audio guestbook — guests can leave a voice note instead of a photo
+  voiceNotes: boolean;
+  // /event/[slug]/display fullscreen carousel for reception screens
+  liveSlideshow: boolean;
+  // per-photo comments in the gallery lightbox
+  comments: boolean;
+  // moderation queue — couple opts in to approve every capture before
+  // it appears in the gallery (auto_approve defaults to false on
+  // event create, the toggle still lives in the portal regardless)
+  moderationQueue: boolean;
   galleryDays: number;
   customBranding: boolean;
   prioritySupport: boolean;
@@ -46,7 +56,10 @@ export const TIERS: Record<TierId, TierDef> = {
     bullets: [
       'Photos only',
       'Two warm filters (Portra · Kodak Gold)',
-      'Four essential stickers',
+      'Four essential stickers + free emoji',
+      'Per-photo comments from guests',
+      'Guests save their captures to their phone',
+      'Printable 4×6 QR table card',
       'Live shared gallery for 7 days',
       'Download all as a single ZIP',
       'Unlimited guests',
@@ -58,6 +71,10 @@ export const TIERS: Record<TierId, TierDef> = {
       stickerSet: 'essential',
       customCoupleOverlay: false,
       revealMode: false,
+      voiceNotes: false,
+      liveSlideshow: false,
+      comments: true,
+      moderationQueue: false,
       galleryDays: 7,
       customBranding: false,
       prioritySupport: false,
@@ -68,16 +85,18 @@ export const TIERS: Record<TierId, TierDef> = {
     label: 'Signature',
     italic: 'most couples choose this',
     price: 169,
-    blurb: 'The full evening — every filter, photos, film and boomerang.',
+    blurb: 'The full evening — every filter, sound, voice notes and a slideshow for the room.',
     bullets: [
-      'Photos and 15-second films',
+      'Everything in Glimpse',
+      '15-second films with sound',
       'Eight-second boomerangs (looping)',
       'All five film filters',
       'Full sticker library',
-      'Live shared gallery for 30 days',
+      'Voice notes — an audio guestbook for shy guests',
+      'Live slideshow for a TV or projector at the reception',
+      'Optional "developing overnight" reveal — gallery unlocks at a time you choose',
       'Custom welcome message for guests',
-      'Download all as a single ZIP',
-      'Unlimited guests',
+      'Live shared gallery for 30 days',
     ],
     features: {
       filters: ALL_FILTERS,
@@ -86,6 +105,10 @@ export const TIERS: Record<TierId, TierDef> = {
       stickerSet: 'full',
       customCoupleOverlay: false,
       revealMode: true,
+      voiceNotes: true,
+      liveSlideshow: true,
+      comments: true,
+      moderationQueue: false,
       galleryDays: 30,
       customBranding: false,
       prioritySupport: false,
@@ -96,11 +119,12 @@ export const TIERS: Record<TierId, TierDef> = {
     label: 'Studio',
     italic: 'a keepsake, held longer',
     price: 299,
-    blurb: 'For larger weddings and couples who want everything kept.',
+    blurb: 'For larger weddings and couples who want every detail curated.',
     bullets: [
       'Everything in Signature',
       'Your names in script — burned into every photo, film & boomerang',
       'Wedding date stamp on every capture',
+      'Pre-approve every capture before guests see it (moderation queue)',
       'Live shared gallery for a full year',
       'No Golden Glance footer',
       'Priority same-day support',
@@ -112,6 +136,10 @@ export const TIERS: Record<TierId, TierDef> = {
       stickerSet: 'full-with-custom',
       customCoupleOverlay: true,
       revealMode: true,
+      voiceNotes: true,
+      liveSlideshow: true,
+      comments: true,
+      moderationQueue: true,
       galleryDays: 365,
       customBranding: true,
       prioritySupport: true,
