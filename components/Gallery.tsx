@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { SubmissionRow } from '@/lib/supabase';
 import { isFavorite, listFavorites, toggleFavorite } from '@/lib/favorites';
 import { shareMedia, type ShareResult } from '@/lib/share';
+import CommentThread from '@/components/CommentThread';
 
 type Props = {
   items: SubmissionRow[];
@@ -168,9 +169,10 @@ export default function Gallery({ items, eventId, coupleNames }: Props) {
           onClick={() => setOpen(null)}
         >
           <div
-            className="max-w-3xl w-full"
+            className="max-w-5xl w-full grid md:grid-cols-[minmax(0,1fr)_320px] gap-6 md:gap-8 items-start"
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="min-w-0">
             {open.media_type === 'photo' ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={open.media_url} alt="" className="w-full h-auto" />
@@ -223,6 +225,12 @@ export default function Gallery({ items, eventId, coupleNames }: Props) {
                 </button>
               </div>
             </div>
+            </div>
+            {ev && (
+              <aside className="bg-cream/5 border border-cream/10 rounded-sm p-4 md:max-h-[80vh] md:overflow-y-auto">
+                <CommentThread eventId={ev} submissionId={open.id} />
+              </aside>
+            )}
           </div>
         </div>
       )}
