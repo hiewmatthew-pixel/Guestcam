@@ -4,6 +4,7 @@
 // stylistic, not colorimetrically accurate.
 
 export type FilterId =
+  | 'none'
   | 'portra-400'
   | 'cinestill-800t'
   | 'kodak-gold-200'
@@ -34,6 +35,9 @@ varying vec2 v_texCoord;
 uniform sampler2D u_image;
 uniform float u_time;
 uniform vec2 u_resolution;
+// 0..1 — how much of the graded look to blend over the raw camera frame.
+// 0 = pass-through, 1 = full filter (legacy behaviour).
+uniform float u_strength;
 
 // pseudo-random for grain
 float rand(vec2 co) {
@@ -55,6 +59,12 @@ vec3 liftGammaGain(vec3 c, vec3 lift, vec3 gamma, vec3 gain) {
   c = c * gain;
   return c;
 }
+
+// Blend the filter's graded output back toward the original sample by
+// u_strength. Grain is part of the look, so it also fades out at 0.
+vec4 blend(vec3 graded, vec3 original) {
+  return vec4(mix(original, clamp(graded, 0.0, 1.0), clamp(u_strength, 0.0, 1.0)), 1.0);
+}
 `;
 
 const PORTRA_400 = `
@@ -75,7 +85,7 @@ void main() {
   float g = (rand(v_texCoord * u_resolution + u_time) - 0.5) * 0.04;
   c += g;
 
-  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+  gl_FragColor = blend(c, tex.rgb);
 }
 `;
 
@@ -103,7 +113,7 @@ void main() {
   float g = (rand(v_texCoord * u_resolution + u_time) - 0.5) * 0.07;
   c += g;
 
-  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+  gl_FragColor = blend(c, tex.rgb);
 }
 `;
 
@@ -124,7 +134,7 @@ void main() {
   float g = (rand(v_texCoord * u_resolution + u_time) - 0.5) * 0.045;
   c += g;
 
-  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+  gl_FragColor = blend(c, tex.rgb);
 }
 `;
 
@@ -142,7 +152,7 @@ void main() {
   float g = (rand(v_texCoord * u_resolution + u_time) - 0.5) * 0.10;
   l += g;
 
-  gl_FragColor = vec4(vec3(clamp(l, 0.0, 1.0)), 1.0);
+  gl_FragColor = blend(vec3(l), tex.rgb);
 }
 `;
 
@@ -168,11 +178,21 @@ void main() {
   float g = (rand(v_texCoord * u_resolution + u_time) - 0.5) * 0.035;
   c += g;
 
-  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+  gl_FragColor = blend(c, tex.rgb);
+}
+`;
+
+// Normal mode — passes the raw camera frame through unchanged.
+// The strength slider has no effect here.
+const NONE_SHADER = `
+${COMMON}
+void main() {
+  gl_FragColor = texture2D(u_image, v_texCoord);
 }
 `;
 
 export const FILTERS: FilterDef[] = [
+  { id: 'none',           label: 'Normal',         blurb: 'as the camera sees it',          fragmentShader: NONE_SHADER },
   { id: 'portra-400',     label: 'Portra 400',     blurb: 'warm · soft · timeless',         fragmentShader: PORTRA_400 },
   { id: 'cinestill-800t', label: 'Cinestill 800T', blurb: 'tungsten · halated · cinematic', fragmentShader: CINESTILL_800T },
   { id: 'kodak-gold-200', label: 'Kodak Gold 200', blurb: 'golden · sunlit · nostalgic',    fragmentShader: KODAK_GOLD_200 },

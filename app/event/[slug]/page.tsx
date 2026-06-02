@@ -29,6 +29,7 @@ export default function EventCapturePage() {
   const [stage, setStage] = useState<Stage>('welcome');
   const [guestName, setGuestName] = useState('');
   const [filter, setFilter] = useState<FilterId>('portra-400');
+  const [filterStrength, setFilterStrength] = useState<number>(1);
   const [facing, setFacing] = useState<'user' | 'environment'>('environment');
   const [mode, setMode] = useState<CaptureMode>('photo');
   const [recording, setRecording] = useState(false);
@@ -618,6 +619,7 @@ export default function EventCapturePage() {
       <div className="relative flex-1 overflow-hidden">
         <FilteredCamera
           filter={filter}
+          strength={filterStrength}
           facing={facing}
           mode={mode}
           recording={recording}
@@ -653,6 +655,28 @@ export default function EventCapturePage() {
 
       <div className="bg-ink/95 pb-6">
         <FilterSelector active={filter} onSelect={setFilter} allowed={tier.features.filters} />
+
+        {/* filter strength slider — hidden on normal mode where it has no effect */}
+        {filter !== 'none' && (
+          <div className="px-6 pt-3 flex items-center gap-3 max-w-md mx-auto">
+            <span className="text-[10px] uppercase tracking-widest text-cream/50 shrink-0">
+              strength
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={Math.round(filterStrength * 100)}
+              onChange={(e) => setFilterStrength(Number(e.target.value) / 100)}
+              className="flex-1 accent-gold h-1"
+              aria-label="filter strength"
+            />
+            <span className="text-[10px] uppercase tracking-widest text-cream/65 tabular-nums w-8 text-right">
+              {Math.round(filterStrength * 100)}
+            </span>
+          </div>
+        )}
 
         {/* mode toggle — own row, centered, segmented pill */}
         {tier.features.allowVideo || tier.features.allowBoomerang ? (

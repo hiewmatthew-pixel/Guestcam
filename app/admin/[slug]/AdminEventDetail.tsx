@@ -226,7 +226,7 @@ export default function AdminEventDetail({ slug }: Props) {
         <p className="mt-4 inline-flex items-center gap-2 text-[10px] uppercase tracking-widest border border-gold text-gold px-2 py-1 rounded-sm">
           {tier.label} tier · {formatPriceCAD(tier.price)} ·{' '}
           {tier.features.allowVideo ? 'photo + video' : 'photo only'} ·{' '}
-          {tier.features.filters.length === 5
+          {tier.features.filters.length >= 6
             ? 'all filters'
             : `${tier.features.filters.length} filters`}
         </p>

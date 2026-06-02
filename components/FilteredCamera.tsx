@@ -8,6 +8,8 @@ export type CaptureMode = 'photo' | 'video' | 'boomerang';
 
 type Props = {
   filter: FilterId;
+  // 0..1, blends the filter's graded look back toward the raw frame
+  strength?: number;
   facing: 'user' | 'environment';
   onPhotoCaptured: (blob: Blob) => void;
   onVideoCaptured: (blob: Blob, kind: 'video' | 'boomerang') => void;
@@ -77,6 +79,7 @@ export type FilteredCameraHandle = {
 
 export default function FilteredCamera({
   filter,
+  strength = 1,
   facing,
   onPhotoCaptured,
   onVideoCaptured,
@@ -86,6 +89,12 @@ export default function FilteredCamera({
   onRecorderError,
   onWebGLUnavailable,
 }: Props) {
+  // ref-mirror so the draw loop reads the latest value without
+  // re-installing the program on every slider tick
+  const strengthRef = useRef<number>(strength);
+  useEffect(() => {
+    strengthRef.current = strength;
+  }, [strength]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // 2D output canvas used during recording when an overlay is active:
   // WebGL frame is blitted onto it, the overlay is painted on top, and
@@ -364,8 +373,12 @@ export default function FilteredCamera({
 
           const uTime = gl.getUniformLocation(program, 'u_time');
           const uRes = gl.getUniformLocation(program, 'u_resolution');
+          const uStrength = gl.getUniformLocation(program, 'u_strength');
           gl.uniform1f(uTime, (performance.now() - startedAtRef.current) / 1000);
           gl.uniform2f(uRes, vw, vh);
+          // uStrength may be null on the pass-through shader (uniform
+          // optimised out); uniform1f(null, ...) is a safe no-op.
+          gl.uniform1f(uStrength, Math.max(0, Math.min(1, strengthRef.current)));
 
           gl.drawArrays(gl.TRIANGLES, 0, 6);
           if (!videoPlayingRef.current) {

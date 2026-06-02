@@ -39,6 +39,7 @@ export type TierDef = {
 };
 
 const ALL_FILTERS: FilterId[] = [
+  'none',
   'portra-400',
   'cinestill-800t',
   'kodak-gold-200',
@@ -65,7 +66,7 @@ export const TIERS: Record<TierId, TierDef> = {
       'Unlimited guests',
     ],
     features: {
-      filters: ['portra-400', 'kodak-gold-200'],
+      filters: ['none', 'portra-400', 'kodak-gold-200'],
       allowVideo: false,
       allowBoomerang: false,
       stickerSet: 'essential',

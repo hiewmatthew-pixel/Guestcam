@@ -209,7 +209,7 @@ export default function AdminEventList() {
                   </p>
                   <p className="text-[10px] text-ink/55 mt-2 leading-snug">
                     {t.features.allowVideo ? 'photo + video' : 'photo only'} ·{' '}
-                    {t.features.filters.length === 5
+                    {t.features.filters.length >= 6
                       ? 'all filters'
                       : `${t.features.filters.length} filters`}
                   </p>
