@@ -19,6 +19,7 @@ type Props = {
   // date burned into the bottom of each frame via a 2D output canvas.
   overlay?: { couple_names?: string; wedding_date?: string };
   onRecorderError?: (msg: string) => void;
+  onMicUnavailable?: () => void;
   onWebGLUnavailable?: () => void;
 };
 
@@ -87,6 +88,7 @@ export default function FilteredCamera({
   recording,
   overlay,
   onRecorderError,
+  onMicUnavailable,
   onWebGLUnavailable,
 }: Props) {
   // ref-mirror so the draw loop reads the latest value without
@@ -475,7 +477,9 @@ export default function FilteredCamera({
           }
         }
       } catch {
-        // mic denied or unavailable — proceed with a silent recording
+        // mic denied or unavailable — record silently but tell the guest
+        // so they aren't surprised by a soundless clip
+        onMicUnavailable?.();
       }
     }
 
@@ -523,7 +527,7 @@ export default function FilteredCamera({
     videoStopTimerRef.current = window.setTimeout(() => {
       stopRecordingInternal();
     }, cap * 1000);
-  }, [onRecorderError, onVideoCaptured, mode]);
+  }, [onRecorderError, onVideoCaptured, onMicUnavailable, mode]);
 
   const stopRecordingInternal = useCallback(() => {
     if (videoStopTimerRef.current) {

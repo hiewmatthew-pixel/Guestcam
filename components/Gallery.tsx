@@ -147,6 +147,29 @@ export default function Gallery({
     else if (r === 'failed') flash('could not share');
   }
 
+  async function onDownload(it: SubmissionRow) {
+    const ext = it.media_type === 'photo' ? 'jpg' : it.media_type === 'voice' ? 'webm' : 'webm';
+    const who = it.guest_name ? `-${it.guest_name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}` : '';
+    const name = `glance-${it.media_type}${who}.${ext}`;
+    try {
+      // fetch as blob so it saves rather than navigating (cross-origin URL)
+      const res = await fetch(it.media_url);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      flash('saved');
+    } catch {
+      // fallback: open in a new tab for manual save (e.g. CORS blocked)
+      window.open(it.media_url, '_blank', 'noopener,noreferrer');
+    }
+  }
+
   // --- empty state ----------------------------------------------------
   if (items.length === 0) {
     return (
@@ -288,6 +311,7 @@ export default function Gallery({
                   glyph={favs.has(open.id) ? '♥' : '♡'}
                 />
                 <ActionButton onClick={() => onShare(open)} label="share" glyph="↗" />
+                <ActionButton onClick={() => onDownload(open)} label="download" glyph="↓" />
                 <button
                   onClick={() => setOpen(null)}
                   className="text-[10px] uppercase tracking-widest text-cream/60 hover:text-cream px-2 py-1"

@@ -46,6 +46,8 @@ export default function EventCapturePage() {
   const [submitting, setSubmitting] = useState(false);
   // 0..1 while an upload is in flight, null otherwise
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  // shown once if the mic is blocked when recording video
+  const [micNotice, setMicNotice] = useState(false);
   const [submittedOk, setSubmittedOk] = useState(false);
   const [savingLocal, setSavingLocal] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -672,7 +674,20 @@ export default function EventCapturePage() {
           onPhotoCaptured={handlePhoto}
           onVideoCaptured={handleVideo}
           onRecorderError={(m) => alert(m)}
+          onMicUnavailable={() => {
+            setMicNotice(true);
+            setTimeout(() => setMicNotice(false), 4000);
+          }}
         />
+
+        {/* mic-denied notice — recording continues, just silent */}
+        {micNotice && (
+          <div className="absolute top-3 inset-x-0 flex justify-center px-4 pointer-events-none">
+            <div className="bg-ink/80 text-cream text-[10px] uppercase tracking-widest px-3 py-2 rounded-full">
+              recording without sound · microphone blocked
+            </div>
+          </div>
+        )}
 
         {/* current filter blurb */}
         <div className="absolute top-3 inset-x-0 text-center pointer-events-none">

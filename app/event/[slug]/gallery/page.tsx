@@ -27,10 +27,14 @@ export default function EventGalleryPage() {
   const [event, setEvent] = useState<EventRow | null>(null);
   const [items, setItems] = useState<SubmissionRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     let unsub: (() => void) | null = null;
+    setLoading(true);
+    setLoadError(false);
 
     async function load() {
       // demo event
@@ -76,13 +80,14 @@ export default function EventGalleryPage() {
           return;
         }
         setEvent(ev);
-        const { data: subs } = await sb
+        const { data: subs, error: subsErr } = await sb
           .from('submissions')
           .select('*')
           .eq('event_id', ev.id)
           .eq('approved', true)
           .order('created_at', { ascending: false });
         if (cancelled) return;
+        if (subsErr) throw subsErr;
         setItems((subs ?? []) as SubmissionRow[]);
 
         // realtime
@@ -134,17 +139,43 @@ export default function EventGalleryPage() {
       setLoading(false);
     }
 
-    load();
+    load().catch(() => {
+      if (!cancelled) {
+        setLoadError(true);
+        setLoading(false);
+      }
+    });
     return () => {
       cancelled = true;
       unsub?.();
     };
-  }, [slug]);
+  }, [slug, reloadKey]);
 
   if (loading) {
     return (
       <main className="min-h-screen grid place-items-center">
         <p className="font-serif italic text-ink/60">loading the gallery…</p>
+      </main>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <main className="min-h-screen grid place-items-center px-6">
+        <div className="text-center max-w-sm">
+          <p className="font-serif italic text-2xl text-ink/70">
+            we couldn’t load the gallery
+          </p>
+          <p className="mt-2 text-sm text-ink/50">
+            Check your connection and try again.
+          </p>
+          <button
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="mt-6 text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
+          >
+            try again
+          </button>
+        </div>
       </main>
     );
   }
