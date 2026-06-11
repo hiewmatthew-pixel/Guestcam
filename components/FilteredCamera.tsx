@@ -37,14 +37,33 @@ type CameraError = {
   message: string;
 };
 
+// Detect in-app browsers (Instagram, Facebook, WhatsApp, TikTok, etc.)
+// where getUserMedia is commonly restricted regardless of permission.
+function isInAppBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /\b(FBAN|FBAV|Instagram|Line|WhatsApp|Twitter|TikTok|Snapchat|Pinterest|FB_IAB|GSA)\b/i.test(
+    ua,
+  ) || /(^|;)\s*wv\s*(;|\))/i.test(ua); // Android WebView flag
+}
+
 function classifyError(e: any): CameraError {
   const name = e?.name as string | undefined;
   const msg = String(e?.message || '');
   if (name === 'NotAllowedError' || /denied|permission/i.test(msg)) {
+    // in-app browsers often surface a permission error even when the
+    // real fix is to reopen the link in a full browser
+    if (isInAppBrowser()) {
+      return {
+        kind: 'permission',
+        message:
+          'Your in-app browser is blocking the camera. Tap the ••• menu and choose "Open in Safari" or "Open in Chrome", then try again.',
+      };
+    }
     return {
       kind: 'permission',
       message:
-        'Camera permission was denied. Tap "AA" in the Safari address bar → Website Settings → Camera → Allow, then reload.',
+        'Camera permission was denied. Open your browser’s site settings for this page, allow Camera, then reload.',
     };
   }
   if (name === 'NotFoundError' || /not.?found/i.test(msg)) {
