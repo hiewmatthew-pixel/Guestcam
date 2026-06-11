@@ -21,6 +21,7 @@ import {
 import { getTier } from '@/lib/tiers';
 import { cleanString, LIMITS } from '@/lib/validate';
 import { compositePhoto } from '@/lib/composite';
+import { uploadFileWithProgress } from '@/lib/upload';
 
 type Stage = 'welcome' | 'capture' | 'review';
 
@@ -43,6 +44,8 @@ export default function EventCapturePage() {
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [stickers, setStickers] = useState<PlacedSticker[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  // 0..1 while an upload is in flight, null otherwise
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [submittedOk, setSubmittedOk] = useState(false);
   const [savingLocal, setSavingLocal] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -220,40 +223,79 @@ export default function EventCapturePage() {
     }
   }
 
+  // Shared upload+insert path for every capture kind. Uploads with
+  // progress + retry, inserts the row, and deletes the orphaned storage
+  // object if the insert fails so we never leave a file with no record.
+  async function storeSubmission(args: {
+    blob: Blob;
+    mediaType: 'photo' | 'video' | 'boomerang' | 'voice';
+    filterName: string;
+    ext: string;
+    contentType: string;
+    guestName: string | null;
+    showProgress?: boolean;
+  }) {
+    if (!event) return;
+    const approved = event.auto_approve !== false;
+    const useSupabase = isSupabaseConfigured && !demo && event.id !== 'demo-event';
+
+    if (!useSupabase) {
+      await addSubmission({
+        event_id: event.id,
+        blob: args.blob,
+        media_type: args.mediaType,
+        filter_name: args.filterName,
+        guest_name: args.guestName,
+        approved,
+      });
+      return;
+    }
+
+    const sb = getSupabase()!;
+    const path = `${event.id}/${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}.${args.ext}`;
+
+    if (args.showProgress) setUploadProgress(0);
+    let mediaUrl: string;
+    try {
+      mediaUrl = await uploadFileWithProgress({
+        bucket: 'submissions',
+        path,
+        blob: args.blob,
+        contentType: args.contentType,
+        onProgress: args.showProgress ? (f) => setUploadProgress(f) : undefined,
+      });
+    } finally {
+      if (args.showProgress) setUploadProgress(null);
+    }
+
+    const insert = await sb.from('submissions').insert({
+      event_id: event.id,
+      media_url: mediaUrl,
+      media_type: args.mediaType,
+      filter_name: args.filterName,
+      guest_name: args.guestName,
+      approved,
+    });
+    if (insert.error) {
+      // roll back the orphaned storage object, then surface the error
+      sb.storage.from('submissions').remove([path]).catch(() => {});
+      throw insert.error;
+    }
+  }
+
   async function submitVoice(blob: Blob, _durationSec: number) {
     if (!event) return;
     const cleanGuest = cleanString(guestName, LIMITS.GUEST_NAME) || null;
-    const useSupabase = isSupabaseConfigured && !demo && event.id !== 'demo-event';
-
-    if (useSupabase) {
-      const sb = getSupabase()!;
-      const ext = blob.type.includes('mp4') ? 'm4a' : 'webm';
-      const path = `${event.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const up = await sb.storage.from('submissions').upload(path, blob, {
-        contentType: blob.type || 'audio/webm',
-        upsert: false,
-      });
-      if (up.error) throw up.error;
-      const { data: pub } = sb.storage.from('submissions').getPublicUrl(path);
-      const insert = await sb.from('submissions').insert({
-        event_id: event.id,
-        media_url: pub.publicUrl,
-        media_type: 'voice',
-        filter_name: '—',
-        guest_name: cleanGuest,
-        approved: event.auto_approve !== false,
-      });
-      if (insert.error) throw insert.error;
-    } else {
-      await addSubmission({
-        event_id: event.id,
-        blob,
-        media_type: 'voice',
-        filter_name: '—',
-        guest_name: cleanGuest,
-        approved: event.auto_approve !== false,
-      });
-    }
+    await storeSubmission({
+      blob,
+      mediaType: 'voice',
+      filterName: '—',
+      ext: blob.type.includes('mp4') ? 'm4a' : 'webm',
+      contentType: blob.type || 'audio/webm',
+      guestName: cleanGuest,
+    });
 
     setVoiceOpen(false);
     setVoiceSent(true);
@@ -304,36 +346,16 @@ export default function EventCapturePage() {
         }
       }
 
-      const useSupabase = isSupabaseConfigured && !demo && event.id !== 'demo-event';
-      if (useSupabase) {
-        const sb = getSupabase()!;
-        const ext = pendingType === 'photo' ? 'jpg' : 'webm';
-        const path = `${event.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const up = await sb.storage.from('submissions').upload(path, uploadBlob, {
-          contentType: uploadBlob.type || (pendingType === 'photo' ? 'image/jpeg' : 'video/webm'),
-          upsert: false,
-        });
-        if (up.error) throw up.error;
-        const { data: pub } = sb.storage.from('submissions').getPublicUrl(path);
-        const insert = await sb.from('submissions').insert({
-          event_id: event.id,
-          media_url: pub.publicUrl,
-          media_type: pendingType,
-          filter_name: filter,
-          guest_name: cleanGuest,
-          approved: event.auto_approve !== false,
-        });
-        if (insert.error) throw insert.error;
-      } else {
-        await addSubmission({
-          event_id: event.id,
-          blob: uploadBlob,
-          media_type: pendingType,
-          filter_name: filter,
-          guest_name: cleanGuest,
-          approved: event.auto_approve !== false,
-        });
-      }
+      await storeSubmission({
+        blob: uploadBlob,
+        mediaType: pendingType,
+        filterName: filter,
+        ext: pendingType === 'photo' ? 'jpg' : 'webm',
+        contentType:
+          uploadBlob.type || (pendingType === 'photo' ? 'image/jpeg' : 'video/webm'),
+        guestName: cleanGuest,
+        showProgress: pendingType !== 'photo', // videos/boomerangs are the big ones
+      });
       setSubmittedOk(true);
       setPendingBlob(null);
       if (pendingUrl) URL.revokeObjectURL(pendingUrl);
@@ -346,6 +368,7 @@ export default function EventCapturePage() {
       alert(e?.message || 'Could not save your capture. Please try again.');
     } finally {
       setSubmitting(false);
+      setUploadProgress(null);
     }
   }
 
@@ -577,9 +600,23 @@ export default function EventCapturePage() {
               <button
                 onClick={submitPending}
                 disabled={submitting}
-                className="w-full bg-gold text-ink py-4 rounded-sm text-xs uppercase tracking-widest disabled:opacity-60"
+                className="relative w-full overflow-hidden bg-gold text-ink py-4 rounded-sm text-xs uppercase tracking-widest disabled:opacity-60"
               >
-                {submitting ? 'sending…' : 'send to the couple'}
+                {/* upload progress fill (videos/boomerangs) */}
+                {uploadProgress !== null && (
+                  <span
+                    aria-hidden
+                    className="absolute inset-y-0 left-0 bg-ink/15 transition-[width] duration-150"
+                    style={{ width: `${Math.round(uploadProgress * 100)}%` }}
+                  />
+                )}
+                <span className="relative">
+                  {submitting
+                    ? uploadProgress !== null
+                      ? `sending… ${Math.round(uploadProgress * 100)}%`
+                      : 'sending…'
+                    : 'send to the couple'}
+                </span>
               </button>
               <button
                 onClick={saveToPhone}
