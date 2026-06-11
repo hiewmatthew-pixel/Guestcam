@@ -14,6 +14,7 @@ import {
   subscribeToSubmissions,
 } from '@/lib/demo-store';
 import {
+  fetchPublicEventBySlug,
   getSupabase,
   isSupabaseConfigured,
   type EventRow,
@@ -68,21 +69,17 @@ export default function EventGalleryPage() {
 
       if (isSupabaseConfigured && !isDemoMode()) {
         const sb = getSupabase()!;
-        const { data: ev } = await sb
-          .from('events')
-          .select('*')
-          .eq('slug', slug)
-          .maybeSingle();
+        const ev = await fetchPublicEventBySlug(sb, slug);
         if (cancelled) return;
         if (!ev) {
           setLoading(false);
           return;
         }
-        setEvent(ev as EventRow);
+        setEvent(ev);
         const { data: subs } = await sb
           .from('submissions')
           .select('*')
-          .eq('event_id', (ev as EventRow).id)
+          .eq('event_id', ev.id)
           .eq('approved', true)
           .order('created_at', { ascending: false });
         if (cancelled) return;
@@ -90,14 +87,14 @@ export default function EventGalleryPage() {
 
         // realtime
         const channel = sb
-          .channel(`sub-${(ev as EventRow).id}`)
+          .channel(`sub-${ev.id}`)
           .on(
             'postgres_changes',
             {
               event: 'INSERT',
               schema: 'public',
               table: 'submissions',
-              filter: `event_id=eq.${(ev as EventRow).id}`,
+              filter: `event_id=eq.${ev.id}`,
             },
             (payload) => {
               const row = payload.new as SubmissionRow;
@@ -114,7 +111,7 @@ export default function EventGalleryPage() {
               event: 'UPDATE',
               schema: 'public',
               table: 'submissions',
-              filter: `event_id=eq.${(ev as EventRow).id}`,
+              filter: `event_id=eq.${ev.id}`,
             },
             (payload) => {
               const row = payload.new as SubmissionRow;

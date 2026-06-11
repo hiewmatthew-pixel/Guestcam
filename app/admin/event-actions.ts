@@ -6,6 +6,48 @@ import { getSupabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase-admi
 import { generateManageToken } from '@/lib/tokens';
 import { cleanString, LIMITS, toSlug, ValidationError } from '@/lib/validate';
 import { TIER_LIST, DEFAULT_TIER, getTier, type TierId } from '@/lib/tiers';
+import type { EventRow } from '@/lib/supabase';
+
+/**
+ * Admin-only event reads. The admin pages can't use the anon client for
+ * these because anon no longer has SELECT on the manage_token column,
+ * and the admin needs that token to build the couple's portal link.
+ * These run with the service role after verifying the admin cookie.
+ */
+export async function adminListEventsAction(): Promise<EventRow[]> {
+  try {
+    await requireAdmin();
+    if (!isSupabaseAdminConfigured) return [];
+    const sb = getSupabaseAdmin()!;
+    const { data } = await sb
+      .from('events')
+      .select('*')
+      .order('created_at', { ascending: false });
+    return (data ?? []) as EventRow[];
+  } catch {
+    return [];
+  }
+}
+
+export async function adminGetEventBySlugAction(
+  slug: string,
+): Promise<EventRow | null> {
+  try {
+    await requireAdmin();
+    if (!isSupabaseAdminConfigured) return null;
+    const clean = cleanString(slug, LIMITS.SLUG);
+    if (!clean) return null;
+    const sb = getSupabaseAdmin()!;
+    const { data } = await sb
+      .from('events')
+      .select('*')
+      .eq('slug', clean)
+      .maybeSingle();
+    return (data as EventRow) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 type CreateInput = {
   couple_names: string;

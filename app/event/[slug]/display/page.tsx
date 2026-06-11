@@ -9,6 +9,7 @@ import {
   subscribeToSubmissions,
 } from '@/lib/demo-store';
 import {
+  fetchPublicEventBySlug,
   getSupabase,
   isSupabaseConfigured,
   labelForMediaType,
@@ -66,31 +67,27 @@ export default function DisplaySlideshowPage() {
 
       if (isSupabaseConfigured && !isDemoMode()) {
         const sb = getSupabase()!;
-        const { data: ev } = await sb
-          .from('events')
-          .select('*')
-          .eq('slug', slug)
-          .maybeSingle();
+        const ev = await fetchPublicEventBySlug(sb, slug);
         if (cancelled || !ev) return;
-        setEvent(ev as EventRow);
+        setEvent(ev);
         const { data: subs } = await sb
           .from('submissions')
           .select('*')
-          .eq('event_id', (ev as EventRow).id)
+          .eq('event_id', ev.id)
           .eq('approved', true)
           .order('created_at', { ascending: false });
         if (cancelled) return;
         setItems((subs ?? []) as SubmissionRow[]);
 
         const channel = sb
-          .channel(`display-${(ev as EventRow).id}`)
+          .channel(`display-${ev.id}`)
           .on(
             'postgres_changes',
             {
               event: 'INSERT',
               schema: 'public',
               table: 'submissions',
-              filter: `event_id=eq.${(ev as EventRow).id}`,
+              filter: `event_id=eq.${ev.id}`,
             },
             (payload) => {
               const row = payload.new as SubmissionRow;
@@ -107,7 +104,7 @@ export default function DisplaySlideshowPage() {
               event: 'UPDATE',
               schema: 'public',
               table: 'submissions',
-              filter: `event_id=eq.${(ev as EventRow).id}`,
+              filter: `event_id=eq.${ev.id}`,
             },
             (payload) => {
               const row = payload.new as SubmissionRow;

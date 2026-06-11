@@ -11,13 +11,16 @@ import {
   setDemoMode,
 } from '@/lib/demo-store';
 import {
-  getSupabase,
   isSupabaseConfigured,
   type EventRow,
 } from '@/lib/supabase';
 import { DEFAULT_TIER, TIER_LIST, TierId, formatPriceCAD, getTier } from '@/lib/tiers';
 import { LIMITS } from '@/lib/validate';
-import { createEventAction, deleteEventAction } from './event-actions';
+import {
+  adminListEventsAction,
+  createEventAction,
+  deleteEventAction,
+} from './event-actions';
 import { adminLogout } from './actions';
 
 function toSlug(s: string) {
@@ -54,9 +57,9 @@ export default function AdminEventList() {
       setEvents(listEvents());
       return;
     }
-    const sb = getSupabase()!;
-    const { data } = await sb.from('events').select('*').order('created_at', { ascending: false });
-    setEvents((data ?? []) as EventRow[]);
+    // admin reads go through the service-role action (anon can't read
+    // the manage_token column, which the event list needs for links)
+    setEvents(await adminListEventsAction());
   }
 
   async function handleCreate(e: React.FormEvent) {

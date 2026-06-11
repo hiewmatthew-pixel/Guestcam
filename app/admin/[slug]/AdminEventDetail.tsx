@@ -22,6 +22,7 @@ import { downloadAsZip } from '@/lib/zip';
 import { formatPriceCAD, getTier } from '@/lib/tiers';
 import { safeFilenamePart } from '@/lib/validate';
 import {
+  adminGetEventBySlugAction,
   adminSetSubmissionApprovedAction,
   rotateTokenAction,
 } from '../event-actions';
@@ -55,30 +56,28 @@ export default function AdminEventDetail({ slug }: Props) {
 
       if (isSupabaseConfigured && !isDemoMode()) {
         const sb = getSupabase()!;
-        const { data: ev } = await sb
-          .from('events')
-          .select('*')
-          .eq('slug', slug)
-          .maybeSingle();
+        // event read goes through the admin server action (needs the
+        // service role to see manage_token); submissions are public.
+        const ev = await adminGetEventBySlugAction(slug);
         if (cancelled) return;
         if (ev) {
-          setEvent(ev as EventRow);
+          setEvent(ev);
           const { data: subs } = await sb
             .from('submissions')
             .select('*')
-            .eq('event_id', (ev as EventRow).id)
+            .eq('event_id', ev.id)
             .order('created_at', { ascending: false });
           setItems((subs ?? []) as SubmissionRow[]);
 
           const channel = sb
-            .channel(`admin-sub-${(ev as EventRow).id}`)
+            .channel(`admin-sub-${ev.id}`)
             .on(
               'postgres_changes',
               {
                 event: 'INSERT',
                 schema: 'public',
                 table: 'submissions',
-                filter: `event_id=eq.${(ev as EventRow).id}`,
+                filter: `event_id=eq.${ev.id}`,
               },
               (payload) => {
                 const r = payload.new as SubmissionRow;
@@ -93,7 +92,7 @@ export default function AdminEventDetail({ slug }: Props) {
                 event: 'UPDATE',
                 schema: 'public',
                 table: 'submissions',
-                filter: `event_id=eq.${(ev as EventRow).id}`,
+                filter: `event_id=eq.${ev.id}`,
               },
               (payload) => {
                 const r = payload.new as SubmissionRow;

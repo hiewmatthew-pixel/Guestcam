@@ -24,6 +24,7 @@ import { downloadAsZip } from '@/lib/zip';
 import { getTier } from '@/lib/tiers';
 import { constantTimeEqual, LIMITS, safeFilenamePart } from '@/lib/validate';
 import {
+  getPortalEventAction,
   updateWelcomeAction,
   setSubmissionApprovedAction,
   setAutoApproveAction,
@@ -97,24 +98,17 @@ export default function CouplePortalPage() {
         return;
       }
 
-      // supabase
+      // supabase — verify the token server-side; the browser never sees
+      // the real manage_token (it isn't selectable with the anon key).
       if (isSupabaseConfigured && !isDemoMode()) {
         const sb = getSupabase()!;
-        const { data: ev } = await sb
-          .from('events')
-          .select('*')
-          .eq('slug', slug)
-          .maybeSingle();
+        const res = await getPortalEventAction({ slug, token });
         if (cancelled) return;
-        if (!ev) {
-          setAccess('missing');
+        if (!res.ok) {
+          setAccess(res.reason === 'denied' ? 'denied' : 'missing');
           return;
         }
-        if (!constantTimeEqual((ev as EventRow).manage_token, token)) {
-          setAccess('denied');
-          return;
-        }
-        const row = ev as EventRow;
+        const row = res.event;
         setEvent(row);
         setWelcomeDraft(row.welcome_message ?? '');
 

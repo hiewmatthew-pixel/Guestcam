@@ -1,14 +1,28 @@
 'use server';
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { constantTimeEqual, sleep } from '@/lib/validate';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 const COOKIE = 'ggc_admin';
+
+function clientIp(): string {
+  const h = headers();
+  const fwd = h.get('x-forwarded-for');
+  if (fwd) return fwd.split(',')[0].trim();
+  return h.get('x-real-ip') || 'unknown';
+}
 
 export async function checkAdminPassword(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   // baseline delay on every attempt — slows scripted brute-force loops
   // without noticeably affecting humans
   await sleep(250 + Math.floor(Math.random() * 150));
+
+  // hard cap on attempts per IP: 8 per 5 minutes
+  const rl = checkRateLimit(`admin-login:${clientIp()}`, 8, 5 * 60_000);
+  if (!rl.allowed) {
+    return { ok: false, error: 'Too many attempts. Wait a few minutes and try again.' };
+  }
 
   const password = String(formData.get('password') ?? '');
   const expected = process.env.ADMIN_PASSWORD;

@@ -5,7 +5,12 @@ import { useParams } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import Logo from '@/components/Logo';
 import { getEventBySlug, isDemoMode } from '@/lib/demo-store';
-import { getSupabase, isSupabaseConfigured, type EventRow } from '@/lib/supabase';
+import {
+  fetchPublicEventBySlug,
+  getSupabase,
+  isSupabaseConfigured,
+  type EventRow,
+} from '@/lib/supabase';
 
 export default function EventQRPrintPage() {
   const params = useParams<{ slug: string }>();
@@ -37,14 +42,9 @@ export default function EventQRPrintPage() {
       return;
     }
     if (isSupabaseConfigured && !isDemoMode()) {
-      getSupabase()!
-        .from('events')
-        .select('*')
-        .eq('slug', slug)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data) setEvent(data as EventRow);
-        });
+      fetchPublicEventBySlug(getSupabase()!, slug).then((ev) => {
+        if (ev) setEvent(ev);
+      });
     }
   }, [slug]);
 

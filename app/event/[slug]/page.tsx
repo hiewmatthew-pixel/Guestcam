@@ -12,7 +12,12 @@ import CoupleOverlay from '@/components/CoupleOverlay';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import { FILTERS, FilterId } from '@/lib/filters';
 import { addSubmission, getEventBySlug, isDemoMode, setDemoMode } from '@/lib/demo-store';
-import { getSupabase, isSupabaseConfigured, type EventRow } from '@/lib/supabase';
+import {
+  fetchPublicEventBySlug,
+  getSupabase,
+  isSupabaseConfigured,
+  type EventRow,
+} from '@/lib/supabase';
 import { getTier } from '@/lib/tiers';
 import { cleanString, LIMITS } from '@/lib/validate';
 import { compositePhoto } from '@/lib/composite';
@@ -93,10 +98,9 @@ export default function EventCapturePage() {
         return;
       }
       if (isSupabaseConfigured && !isDemoMode()) {
-        const sb = getSupabase();
-        const { data } = await sb!.from('events').select('*').eq('slug', slug).maybeSingle();
+        const ev = await fetchPublicEventBySlug(getSupabase()!, slug);
         if (!cancelled) {
-          setEvent((data as EventRow) ?? null);
+          setEvent(ev);
           setLoading(false);
         }
         return;

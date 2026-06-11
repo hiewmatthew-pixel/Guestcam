@@ -31,6 +31,40 @@ export type EventRow = {
   created_at: string;
 };
 
+// Columns that are safe to expose to the anon (guest) client. The
+// manage_token is the couple's portal credential and MUST NOT be
+// selected from the browser — the database also revokes anon SELECT on
+// that column (see README), so `select('*')` from anon would error.
+// Use this constant for every guest-facing events read.
+export const PUBLIC_EVENT_COLUMNS =
+  'id, slug, couple_names, wedding_date, welcome_message, tier, reveal_at, auto_approve, created_at';
+
+// A public event read never carries the manage_token; we fill it with an
+// empty string so the shape still satisfies EventRow for components that
+// only read display fields.
+export type PublicEvent = Omit<EventRow, 'manage_token'>;
+
+export function toEventRow(pub: PublicEvent): EventRow {
+  return { ...pub, manage_token: '' };
+}
+
+/**
+ * Fetch a single event by slug using only guest-safe columns. Returns
+ * an EventRow with an empty manage_token. Use on every public page.
+ */
+export async function fetchPublicEventBySlug(
+  sb: SupabaseClient,
+  slug: string,
+): Promise<EventRow | null> {
+  const { data } = await sb
+    .from('events')
+    .select(PUBLIC_EVENT_COLUMNS)
+    .eq('slug', slug)
+    .maybeSingle();
+  if (!data) return null;
+  return toEventRow(data as PublicEvent);
+}
+
 export type MediaType = 'photo' | 'video' | 'boomerang' | 'voice';
 
 export function labelForMediaType(t: MediaType): string {

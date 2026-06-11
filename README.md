@@ -99,6 +99,15 @@ create index if not exists events_manage_token_idx on public.events(manage_token
 -- to add reveal_at + auto_approve if events already existed:
 -- alter table public.events add column if not exists reveal_at timestamptz;
 -- alter table public.events add column if not exists auto_approve boolean not null default true;
+--
+-- SECURITY (apply to existing installs): stop leaking manage_token to anon
+-- revoke select on public.events from anon;
+-- grant select (id, slug, couple_names, wedding_date, welcome_message,
+--   tier, reveal_at, auto_approve, created_at) on public.events to anon;
+--
+-- and tighten the comments insert policy to match event_id to its submission:
+-- drop policy if exists "anon can insert comments" on public.comments;
+-- (then re-create it from the definition below)
 
 -- submissions
 create table if not exists public.submissions (
@@ -124,6 +133,19 @@ alter table public.submissions enable row level security;
 create policy "events readable by anyone"
   on public.events for select
   using (true);
+
+-- COLUMN-LEVEL SECURITY: manage_token is the couple's portal credential
+-- and must NEVER reach the browser. Remove anon's blanket SELECT and
+-- re-grant only the guest-safe columns. After this, `select('*')` from
+-- the anon key errors; the app uses PUBLIC_EVENT_COLUMNS (lib/supabase.ts)
+-- for all guest reads, and portal/admin reads go through server actions
+-- that run with the service role (which bypasses these grants).
+revoke select on public.events from anon;
+grant select (
+  id, slug, couple_names, wedding_date, welcome_message,
+  tier, reveal_at, auto_approve, created_at
+) on public.events to anon;
+-- if you use the 'authenticated' role too, mirror the two lines above for it.
 
 -- anyone can read approved submissions (public gallery)
 create policy "approved submissions readable by anyone"
@@ -154,7 +176,12 @@ create policy "comments readable by anyone" on public.comments for select using 
 create policy "anon can insert comments" on public.comments for insert
   with check (
     char_length(body) between 1 and 280
-    and exists (select 1 from public.submissions s where s.id = submission_id)
+    -- the submission must exist AND the event_id must match its owner,
+    -- so a comment can't be mis-attributed to the wrong event
+    and exists (
+      select 1 from public.submissions s
+      where s.id = submission_id and s.event_id = comments.event_id
+    )
   );
 
 -- intentionally NO policy for anon INSERT/UPDATE/DELETE on events,
