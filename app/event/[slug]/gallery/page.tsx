@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import Gallery from '@/components/Gallery';
 import RevealCountdown from '@/components/RevealCountdown';
-import { getTier } from '@/lib/tiers';
+import { getTier, isGalleryExpired } from '@/lib/tiers';
 import {
   getEventBySlug,
   isDemoMode,
@@ -177,7 +177,23 @@ export default function EventGalleryPage() {
         </Link>
       </header>
 
-      {event.reveal_at && new Date(event.reveal_at).getTime() > Date.now() ? (
+      {isGalleryExpired(event) ? (
+        <section className="py-24 px-6 text-center max-w-md mx-auto">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-ink/45">
+            the gallery has closed
+          </p>
+          <h2 className="mt-6 font-serif italic text-3xl leading-tight">
+            these moments have been
+            <br />
+            handed back to the couple
+          </h2>
+          <p className="mt-6 text-ink/60 leading-relaxed">
+            The shared gallery for {event.couple_names} stayed open for{' '}
+            {getTier(event.tier).features.galleryDays} days after the wedding
+            and has now closed. The couple keeps every capture.
+          </p>
+        </section>
+      ) : event.reveal_at && new Date(event.reveal_at).getTime() > Date.now() ? (
         <RevealCountdown
           revealAt={event.reveal_at}
           coupleNames={event.couple_names}

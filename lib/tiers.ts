@@ -160,3 +160,30 @@ export function getTier(id: string | null | undefined): TierDef {
 export function formatPriceCAD(n: number): string {
   return `$${n} CAD`;
 }
+
+/**
+ * When the guest-facing gallery closes: wedding_date + the tier's
+ * galleryDays. Returns null if the date can't be parsed (treat as open).
+ * The couple's portal is intentionally NOT subject to this — they keep
+ * access to their own photos.
+ */
+export function galleryExpiresAt(event: {
+  tier: string;
+  wedding_date: string;
+}): Date | null {
+  const base = new Date(event.wedding_date);
+  if (Number.isNaN(base.getTime())) return null;
+  const days = getTier(event.tier).features.galleryDays;
+  // expire at the END of the last day (start-of-wedding-day + days + 1)
+  const expires = new Date(base);
+  expires.setDate(expires.getDate() + days + 1);
+  return expires;
+}
+
+export function isGalleryExpired(event: {
+  tier: string;
+  wedding_date: string;
+}): boolean {
+  const expires = galleryExpiresAt(event);
+  return expires ? Date.now() > expires.getTime() : false;
+}

@@ -16,7 +16,7 @@ import {
   type EventRow,
   type SubmissionRow,
 } from '@/lib/supabase';
-import { getTier } from '@/lib/tiers';
+import { getTier, isGalleryExpired } from '@/lib/tiers';
 
 const PHOTO_DURATION_MS = 6000;
 // boomerangs loop forever; advance after they've played for a beat.
@@ -225,6 +225,21 @@ export default function DisplaySlideshowPage() {
             The reception slideshow projects every guest's capture as it
             arrives. Upgrade your event to turn it on.
           </p>
+        </div>
+      </main>
+    );
+  }
+
+  // the slideshow URL is public; once the gallery window closes, stop
+  // serving it (keeps old events from being projected indefinitely).
+  if (isGalleryExpired(event)) {
+    return (
+      <main className="min-h-screen grid place-items-center bg-black text-cream text-center px-8">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.4em] text-cream/55">
+            the gallery has closed
+          </p>
+          <p className="mt-6 font-serif italic text-5xl">{event.couple_names}</p>
         </div>
       </main>
     );
