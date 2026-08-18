@@ -44,6 +44,7 @@ export default function EventCapturePage() {
   const [recording, setRecording] = useState(false);
   // photobooth
   const [boothLayout, setBoothLayout] = useState<FrameId>('strip');
+  const [boothTimer, setBoothTimer] = useState(3); // countdown seconds per shot
   const [boothRunning, setBoothRunning] = useState(false);
   const [boothCountdown, setBoothCountdown] = useState<number | null>(null);
   const [boothShotIndex, setBoothShotIndex] = useState(0); // 0-based, done shots
@@ -187,9 +188,9 @@ export default function EventCapturePage() {
     try {
       for (let i = 0; i < frame.shots; i++) {
         // 3-2-1 countdown
-        for (let n = 3; n >= 1; n--) {
+        for (let n = boothTimer; n >= 1; n--) {
           setBoothCountdown(n);
-          await sleep(800);
+          await sleep(1000);
         }
         setBoothCountdown(null);
         // flash + capture
@@ -908,11 +909,40 @@ export default function EventCapturePage() {
           </div>
         )}
 
+        {/* photobooth countdown timer */}
+        {mode === 'booth' && (
+          <div className="px-6 pt-3 flex items-center justify-center gap-2">
+            <span className="text-[10px] uppercase tracking-widest text-cream/40">
+              timer
+            </span>
+            {[3, 5, 10].map((secs) => {
+              const active = boothTimer === secs;
+              return (
+                <button
+                  key={secs}
+                  type="button"
+                  disabled={boothRunning}
+                  onClick={() => setBoothTimer(secs)}
+                  aria-pressed={active}
+                  className={[
+                    'px-3 py-1 rounded-full border text-[10px] uppercase tracking-widest transition-colors disabled:opacity-50',
+                    active
+                      ? 'border-gold bg-gold/15 text-gold'
+                      : 'border-cream/20 text-cream/60 hover:text-cream',
+                  ].join(' ')}
+                >
+                  {secs}s
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="px-6 pt-3 grid grid-cols-3 items-center">
           {/* left spacer keeps the capture button visually centered */}
           <span className="text-[10px] uppercase tracking-widest text-cream/40">
             {mode === 'photo' && 'still'}
-            {mode === 'booth' && `${getFrame(boothLayout).shots} shots`}
+            {mode === 'booth' && `${getFrame(boothLayout).shots} shots · ${boothTimer}s`}
             {mode === 'video' && 'up to 15s'}
             {mode === 'boomerang' && 'loop · 8s'}
           </span>
