@@ -22,8 +22,11 @@ import { getTier } from '@/lib/tiers';
 import { cleanString, LIMITS } from '@/lib/validate';
 import { compositePhoto } from '@/lib/composite';
 import { uploadFileWithProgress } from '@/lib/upload';
+import { FRAMES, getFrame, composeFrame, type FrameId } from '@/lib/frames';
 
 type Stage = 'welcome' | 'capture' | 'review';
+// page-level capture mode adds 'booth' on top of the camera's modes
+type PageMode = CaptureMode | 'booth';
 
 export default function EventCapturePage() {
   const params = useParams<{ slug: string }>();
@@ -37,8 +40,18 @@ export default function EventCapturePage() {
   const [filter, setFilter] = useState<FilterId>('portra-400');
   const [filterStrength, setFilterStrength] = useState<number>(1);
   const [facing, setFacing] = useState<'user' | 'environment'>('environment');
-  const [mode, setMode] = useState<CaptureMode>('photo');
+  const [mode, setMode] = useState<PageMode>('photo');
   const [recording, setRecording] = useState(false);
+  // photobooth
+  const [boothLayout, setBoothLayout] = useState<FrameId>('strip');
+  const [boothRunning, setBoothRunning] = useState(false);
+  const [boothCountdown, setBoothCountdown] = useState<number | null>(null);
+  const [boothShotIndex, setBoothShotIndex] = useState(0); // 0-based, done shots
+  const [boothFlash, setBoothFlash] = useState(false);
+  // the pending capture is a booth collage (already branded with names)
+  const [pendingIsCollage, setPendingIsCollage] = useState(false);
+  // camera only understands photo/video/boomerang; booth captures stills
+  const cameraMode: CaptureMode = mode === 'booth' ? 'photo' : mode;
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
   const [pendingType, setPendingType] = useState<'photo' | 'video' | 'boomerang'>('photo');
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
@@ -151,10 +164,71 @@ export default function EventCapturePage() {
       setMode(tier.features.allowVideo ? 'video' : 'photo');
       setRecording(false);
     }
+    if (mode === 'booth' && !tier.features.photobooth) {
+      setMode('photo');
+    }
   }, [event, tier, filter, mode]);
 
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  // Run the photobooth: count down, flash, capture N stills, then
+  // composite them into the chosen frame and go to review.
+  async function runBooth() {
+    if (boothRunning) return;
+    const frame = getFrame(boothLayout);
+    const captureRaw = (window as any).__ggcCaptureRaw as
+      | (() => Promise<Blob | null>)
+      | undefined;
+    if (typeof captureRaw !== 'function') return;
+
+    setBoothRunning(true);
+    setBoothShotIndex(0);
+    const shots: Blob[] = [];
+    try {
+      for (let i = 0; i < frame.shots; i++) {
+        // 3-2-1 countdown
+        for (let n = 3; n >= 1; n--) {
+          setBoothCountdown(n);
+          await sleep(800);
+        }
+        setBoothCountdown(null);
+        // flash + capture
+        setBoothFlash(true);
+        const blob = await captureRaw();
+        await sleep(140);
+        setBoothFlash(false);
+        if (blob) shots.push(blob);
+        setBoothShotIndex(i + 1);
+        // brief beat between shots (skip after the last)
+        if (i < frame.shots - 1) await sleep(700);
+      }
+
+      if (shots.length === 0) return;
+      const collage = await composeFrame(boothLayout, shots, {
+        couple_names: event?.couple_names,
+        wedding_date: event?.wedding_date,
+      });
+      const url = URL.createObjectURL(collage);
+      setPendingBlob(collage);
+      setPendingType('photo');
+      setPendingIsCollage(true);
+      setPendingUrl(url);
+      setStickers([]);
+      setStage('review');
+    } catch (e: any) {
+      alert(e?.message || 'The photobooth hit a snag — please try again.');
+    } finally {
+      setBoothRunning(false);
+      setBoothCountdown(null);
+      setBoothFlash(false);
+      setBoothShotIndex(0);
+    }
+  }
+
   function onCaptureTap() {
-    if (mode === 'photo') {
+    if (mode === 'booth') {
+      runBooth();
+    } else if (mode === 'photo') {
       const fn = (window as any).__ggcCapturePhoto;
       if (typeof fn === 'function') fn();
     } else {
@@ -166,6 +240,7 @@ export default function EventCapturePage() {
     const url = URL.createObjectURL(blob);
     setPendingBlob(blob);
     setPendingType('photo');
+    setPendingIsCollage(false);
     setPendingUrl(url);
     setStickers([]);
     setStage('review');
@@ -204,7 +279,7 @@ export default function EventCapturePage() {
               couple_names: event.couple_names,
               wedding_date: event.wedding_date,
             },
-            { burnCoupleOverlay: tier.features.customCoupleOverlay },
+            { burnCoupleOverlay: tier.features.customCoupleOverlay && !pendingIsCollage },
           );
         } catch {
           // fall back to raw blob if composite fails
@@ -329,9 +404,9 @@ export default function EventCapturePage() {
       // Bake stickers + (Studio) couple overlay into photos.
       // Videos/boomerangs in V1 are uploaded raw.
       let uploadBlob = pendingBlob;
+      const burnOverlay = tier.features.customCoupleOverlay && !pendingIsCollage;
       const needsComposite =
-        pendingType === 'photo' &&
-        (stickers.length > 0 || tier.features.customCoupleOverlay);
+        pendingType === 'photo' && (stickers.length > 0 || burnOverlay);
       if (needsComposite) {
         try {
           uploadBlob = await compositePhoto(
@@ -341,7 +416,7 @@ export default function EventCapturePage() {
               couple_names: event.couple_names,
               wedding_date: event.wedding_date,
             },
-            { burnCoupleOverlay: tier.features.customCoupleOverlay },
+            { burnCoupleOverlay: burnOverlay },
           );
         } catch (e) {
           console.warn('photo composite failed, uploading raw:', e);
@@ -664,7 +739,7 @@ export default function EventCapturePage() {
           filter={filter}
           strength={filterStrength}
           facing={facing}
-          mode={mode}
+          mode={cameraMode}
           recording={recording}
           overlay={
             tier.features.customCoupleOverlay
@@ -686,6 +761,35 @@ export default function EventCapturePage() {
             <div className="bg-ink/80 text-cream text-[10px] uppercase tracking-widest px-3 py-2 rounded-full">
               recording without sound · microphone blocked
             </div>
+          </div>
+        )}
+
+        {/* photobooth: capture flash */}
+        {boothFlash && (
+          <div className="absolute inset-0 bg-cream pointer-events-none" />
+        )}
+
+        {/* photobooth: big countdown number */}
+        {boothCountdown !== null && (
+          <div className="absolute inset-0 grid place-items-center pointer-events-none">
+            <span className="font-serif text-cream text-[9rem] leading-none drop-shadow-[0_2px_12px_rgba(0,0,0,0.5)]">
+              {boothCountdown}
+            </span>
+          </div>
+        )}
+
+        {/* photobooth: shot progress dots */}
+        {mode === 'booth' && (
+          <div className="absolute bottom-3 inset-x-0 flex justify-center gap-2 pointer-events-none">
+            {Array.from({ length: getFrame(boothLayout).shots }).map((_, i) => (
+              <span
+                key={i}
+                className={[
+                  'w-2.5 h-2.5 rounded-full border border-cream/70',
+                  i < boothShotIndex ? 'bg-gold border-gold' : 'bg-transparent',
+                ].join(' ')}
+              />
+            ))}
           </div>
         )}
 
@@ -735,7 +839,7 @@ export default function EventCapturePage() {
         )}
 
         {/* mode toggle — own row, centered, segmented pill */}
-        {tier.features.allowVideo || tier.features.allowBoomerang ? (
+        {tier.features.allowVideo || tier.features.allowBoomerang || tier.features.photobooth ? (
           <div className="px-6 pt-3 flex justify-center">
             <div
               role="tablist"
@@ -745,6 +849,7 @@ export default function EventCapturePage() {
               {(
                 [
                   { id: 'photo' as const, label: 'photo', show: true },
+                  { id: 'booth' as const, label: 'booth', show: tier.features.photobooth },
                   { id: 'video' as const, label: 'video', show: tier.features.allowVideo },
                   { id: 'boomerang' as const, label: 'boomerang', show: tier.features.allowBoomerang },
                 ] as const
@@ -757,12 +862,13 @@ export default function EventCapturePage() {
                       key={m.id}
                       role="tab"
                       aria-selected={active}
+                      disabled={boothRunning}
                       onClick={() => {
                         setMode(m.id);
                         setRecording(false);
                       }}
                       className={[
-                        'px-4 py-1.5 rounded-full text-[11px] uppercase tracking-widest transition-colors',
+                        'px-4 py-1.5 rounded-full text-[11px] uppercase tracking-widest transition-colors disabled:opacity-50',
                         active
                           ? 'bg-gold text-ink font-medium shadow-[0_0_0_1px_rgba(184,149,106,0.6)]'
                           : 'text-cream/65 hover:text-cream',
@@ -776,18 +882,45 @@ export default function EventCapturePage() {
           </div>
         ) : null}
 
+        {/* photobooth layout picker */}
+        {mode === 'booth' && (
+          <div className="px-6 pt-3 flex justify-center gap-2 flex-wrap">
+            {FRAMES.map((f) => {
+              const active = boothLayout === f.id;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  disabled={boothRunning}
+                  onClick={() => setBoothLayout(f.id)}
+                  className={[
+                    'px-3 py-1.5 rounded-sm border text-[10px] uppercase tracking-widest transition-colors disabled:opacity-50',
+                    active
+                      ? 'border-gold text-gold'
+                      : 'border-cream/20 text-cream/60 hover:text-cream',
+                  ].join(' ')}
+                  title={f.blurb}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="px-6 pt-3 grid grid-cols-3 items-center">
           {/* left spacer keeps the capture button visually centered */}
           <span className="text-[10px] uppercase tracking-widest text-cream/40">
             {mode === 'photo' && 'still'}
+            {mode === 'booth' && `${getFrame(boothLayout).shots} shots`}
             {mode === 'video' && 'up to 15s'}
             {mode === 'boomerang' && 'loop · 8s'}
           </span>
 
           <div className="flex justify-center">
             <CaptureButton
-              mode={mode}
-              recording={recording}
+              mode={cameraMode}
+              recording={recording || boothRunning}
               maxSeconds={mode === 'boomerang' ? 8 : 15}
               onTap={onCaptureTap}
             />

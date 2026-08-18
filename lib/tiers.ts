@@ -19,6 +19,9 @@ export type TierFeatures = {
   liveSlideshow: boolean;
   // per-photo comments in the gallery lightbox
   comments: boolean;
+  // photobooth mode — capture a sequence of stills composited into a
+  // framed strip/film-strip/polaroid collage for the couple
+  photobooth: boolean;
   // moderation queue — couple opts in to approve every capture before
   // it appears in the gallery (auto_approve defaults to false on
   // event create, the toggle still lives in the portal regardless)
@@ -58,6 +61,7 @@ export const TIERS: Record<TierId, TierDef> = {
       'Photos only',
       'Two warm filters (Portra · Kodak Gold)',
       'Four essential stickers + free emoji',
+      'Photobooth strips — classic · film · polaroid',
       'Per-photo comments from guests',
       'Guests save their captures to their phone',
       'Printable 4×6 QR table card',
@@ -75,6 +79,7 @@ export const TIERS: Record<TierId, TierDef> = {
       voiceNotes: false,
       liveSlideshow: false,
       comments: true,
+      photobooth: true,
       moderationQueue: false,
       galleryDays: 7,
       customBranding: false,
@@ -109,6 +114,7 @@ export const TIERS: Record<TierId, TierDef> = {
       voiceNotes: true,
       liveSlideshow: true,
       comments: true,
+      photobooth: true,
       moderationQueue: false,
       galleryDays: 30,
       customBranding: false,
@@ -140,6 +146,7 @@ export const TIERS: Record<TierId, TierDef> = {
       voiceNotes: true,
       liveSlideshow: true,
       comments: true,
+      photobooth: true,
       moderationQueue: true,
       galleryDays: 365,
       customBranding: true,

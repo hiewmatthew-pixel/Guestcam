@@ -584,8 +584,13 @@ export default function FilteredCamera({
       const blob = await capturePhoto();
       if (blob) onPhotoCaptured(blob);
     };
+    // raw capture for the photobooth: resolves the blob to the caller
+    // instead of routing through onPhotoCaptured, so a booth sequence can
+    // await each shot.
+    (window as any).__ggcCaptureRaw = () => capturePhoto();
     return () => {
       delete (window as any).__ggcCapturePhoto;
+      delete (window as any).__ggcCaptureRaw;
     };
   }, [capturePhoto, onPhotoCaptured]);
 
