@@ -7,6 +7,12 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      screens: {
+        // very short viewports: Galaxy Z Flip cover screens (~310-400px
+        // tall), phones in landscape. The camera switches to an overlay
+        // layout so the viewfinder keeps the whole screen.
+        short: { raw: '(max-height: 540px)' },
+      },
       colors: {
         cream: '#F5F1EA',
         ink: '#1A1A1A',

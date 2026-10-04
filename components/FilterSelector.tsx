@@ -12,7 +12,7 @@ export default function FilterSelector({ active, onSelect, allowed }: Props) {
   const visible = allowed ? FILTERS.filter((f) => allowed.includes(f.id)) : FILTERS;
   return (
     <div className="w-full">
-      <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 py-3">
+      <div className="flex gap-3 short:gap-2 overflow-x-auto no-scrollbar px-4 py-3 short:py-1.5">
         {visible.map((f) => {
           const isActive = f.id === active;
           return (
@@ -20,7 +20,7 @@ export default function FilterSelector({ active, onSelect, allowed }: Props) {
               key={f.id}
               onClick={() => onSelect(f.id)}
               className={[
-                'shrink-0 rounded-full px-4 py-2 text-xs uppercase tracking-widest transition-all',
+                'shrink-0 rounded-full px-4 py-2 short:px-3 short:py-1.5 text-xs short:text-[10px] uppercase tracking-widest transition-all',
                 'border',
                 isActive
                   ? 'bg-gold text-cream border-gold'

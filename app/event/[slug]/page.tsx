@@ -480,7 +480,7 @@ export default function EventCapturePage() {
   if (stage === 'welcome') {
     return (
       <main className="min-h-screen min-h-dvh flex flex-col pt-safe pb-safe">
-        <header className="px-6 pt-8 flex items-center gap-3">
+        <header className="px-6 pt-8 short:pt-3 flex items-center gap-3">
           <Link
             href="/"
             aria-label="back to home"
@@ -498,12 +498,12 @@ export default function EventCapturePage() {
           )}
         </header>
 
-        <section className="flex-1 grid place-items-center px-6 py-12">
+        <section className="flex-1 grid place-items-center px-6 py-12 short:py-4">
           <div className="max-w-md w-full text-center animate-fade-up">
             <p className="text-[11px] tracking-widest uppercase text-ink/50">
               {dateLabel}
             </p>
-            <h1 className="mt-4 font-serif italic text-4xl sm:text-5xl leading-tight">
+            <h1 className="mt-4 short:mt-2 font-serif italic text-4xl short:text-3xl sm:text-5xl leading-tight">
               {event.couple_names}
             </h1>
             <p className="mt-6 font-serif text-xl text-ink/70 italic">
@@ -515,7 +515,7 @@ export default function EventCapturePage() {
               </p>
             )}
 
-            <div className="mt-10 text-left">
+            <div className="mt-10 short:mt-5 text-left">
               <label className="block text-[10px] uppercase tracking-widest text-ink/60 mb-2">
                 your name <span className="text-ink/40 lowercase">(optional)</span>
               </label>
@@ -528,7 +528,7 @@ export default function EventCapturePage() {
               />
             </div>
 
-            <p className="mt-10 text-xs text-ink/50 leading-relaxed">
+            <p className="mt-10 short:mt-4 text-xs text-ink/50 leading-relaxed">
               Your captures will be shared with the couple.
             </p>
 
@@ -554,7 +554,7 @@ export default function EventCapturePage() {
 
             <button
               onClick={() => setStage('capture')}
-              className="mt-8 w-full bg-ink text-cream py-4 rounded-sm text-xs uppercase tracking-widest"
+              className="mt-8 short:mt-4 w-full bg-ink text-cream py-4 short:py-3 rounded-sm text-xs uppercase tracking-widest"
             >
               open the camera
             </button>
@@ -621,7 +621,7 @@ export default function EventCapturePage() {
           <span className="w-12" />
         </header>
 
-        <div className="flex-1 grid place-items-center p-4">
+        <div className="flex-1 grid place-items-center p-4 short:p-2">
           {pendingType === 'photo' ? (
             <div className="relative inline-block">
               {tier.features.stickerSet ? (
@@ -639,7 +639,7 @@ export default function EventCapturePage() {
                 <img
                   src={pendingUrl}
                   alt=""
-                  className="max-h-[max(220px,calc(100dvh-240px))] max-w-full w-auto"
+                  className="max-h-[max(220px,calc(100dvh-240px))] short:max-h-[62dvh] max-w-full w-auto"
                 />
               )}
               {tier.features.customCoupleOverlay && (
@@ -653,7 +653,7 @@ export default function EventCapturePage() {
           ) : (
             <video
               src={pendingUrl}
-              className="max-h-[max(220px,calc(100dvh-240px))] max-w-full w-auto"
+              className="max-h-[max(220px,calc(100dvh-240px))] short:max-h-[62dvh] max-w-full w-auto"
               controls
               autoPlay
               playsInline
@@ -662,7 +662,7 @@ export default function EventCapturePage() {
           )}
         </div>
 
-        <div className="px-6 pb-6 pt-3">
+        <div className="px-6 pb-6 pt-3 short:sticky short:bottom-0 short:z-10 short:bg-ink short:pb-2 short:pt-2 short:border-t short:border-cream/10">
           {submittedOk ? (
             <p className="text-center font-serif italic text-2xl text-gold-soft">
               Your moment is saved ✦
@@ -706,8 +706,8 @@ export default function EventCapturePage() {
 
   // Capture
   return (
-    <main className="h-screen h-dvh overflow-hidden flex flex-col bg-ink text-cream pt-safe pb-safe">
-      <header className="px-4 pt-3 pb-2 flex items-center justify-between">
+    <main className="relative h-screen h-dvh overflow-hidden flex flex-col bg-ink text-cream pt-safe pb-safe">
+      <header className="relative z-10 px-4 pt-3 pb-2 short:pt-2 short:pb-4 flex items-center justify-between short:bg-gradient-to-b short:from-black/70 short:to-transparent">
         <button
           onClick={() => {
             setRecording(false);
@@ -732,7 +732,7 @@ export default function EventCapturePage() {
         </button>
       </header>
 
-      <div className="relative flex-1 overflow-hidden">
+      <div className="relative flex-1 overflow-hidden short:absolute short:inset-0">
         <FilteredCamera
           filter={filter}
           strength={filterStrength}
@@ -792,7 +792,7 @@ export default function EventCapturePage() {
         )}
 
         {/* current filter blurb */}
-        <div className="absolute top-3 inset-x-0 text-center pointer-events-none">
+        <div className="absolute top-3 inset-x-0 text-center pointer-events-none short:hidden">
           <p className="font-serif italic text-cream/85 text-base">
             {FILTERS.find((f) => f.id === filter)?.label}
           </p>
@@ -811,12 +811,12 @@ export default function EventCapturePage() {
         )}
       </div>
 
-      <div className="bg-ink/95 pb-6">
+      <div className="relative z-10 mt-auto bg-ink/95 pb-6 short:pb-1 short:pt-6 short:bg-transparent short:bg-gradient-to-t short:from-black/85 short:via-black/60 short:to-transparent">
         <FilterSelector active={filter} onSelect={setFilter} allowed={tier.features.filters} />
 
         {/* filter strength slider — hidden on normal mode where it has no effect */}
         {filter !== 'none' && (
-          <div className="px-6 pt-3 flex items-center gap-3 max-w-md mx-auto">
+          <div className="px-6 pt-3 flex items-center gap-3 max-w-md mx-auto short:hidden">
             <span className="text-[10px] uppercase tracking-widest text-cream/50 shrink-0">
               strength
             </span>
@@ -838,7 +838,7 @@ export default function EventCapturePage() {
 
         {/* mode toggle — own row, centered, segmented pill */}
         {tier.features.allowVideo || tier.features.allowBoomerang || tier.features.photobooth ? (
-          <div className="px-3 min-[420px]:px-6 pt-3 flex justify-center">
+          <div className="px-3 min-[420px]:px-6 pt-3 short:pt-1 flex justify-center">
             <div
               role="tablist"
               aria-label="capture mode"
@@ -882,7 +882,7 @@ export default function EventCapturePage() {
 
         {/* photobooth layout + timer: one row, scrolls sideways on narrow phones */}
         {mode === 'booth' && (
-          <div className="pt-2 overflow-x-auto no-scrollbar">
+          <div className="pt-2 short:pt-1 overflow-x-auto no-scrollbar">
             <div className="px-3 min-[420px]:px-4 flex items-center gap-1 min-[420px]:gap-1.5 w-max mx-auto">
               {FRAMES.map((f) => {
                 const active = boothLayout === f.id;
@@ -920,7 +920,7 @@ export default function EventCapturePage() {
           </div>
         )}
 
-        <div className="px-6 pt-3 grid grid-cols-3 items-center">
+        <div className="px-6 pt-3 short:pt-0 grid grid-cols-3 items-center">
           {/* left spacer keeps the capture button visually centered */}
           <span className="text-[10px] uppercase tracking-widest text-cream/40">
             {mode === 'photo' && 'still'}
@@ -929,7 +929,7 @@ export default function EventCapturePage() {
             {mode === 'boomerang' && 'loop · 8s'}
           </span>
 
-          <div className="flex justify-center">
+          <div className="flex justify-center short:-my-2.5 short:scale-[0.72]">
             <CaptureButton
               mode={cameraMode}
               recording={recording || boothRunning}
