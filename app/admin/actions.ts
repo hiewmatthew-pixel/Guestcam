@@ -3,6 +3,7 @@
 import { cookies, headers } from 'next/headers';
 import { constantTimeEqual, sleep } from '@/lib/validate';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { ADMIN_SESSION_TTL_MS, createAdminSession, verifyAdminSession } from '@/lib/admin-session';
 
 const COOKIE = 'ggc_admin';
 
@@ -32,18 +33,18 @@ export async function checkAdminPassword(formData: FormData): Promise<{ ok: bool
   if (!constantTimeEqual(password, expected)) {
     return { ok: false, error: 'Wrong password.' };
   }
-  cookies().set(COOKIE, '1', {
+  cookies().set(COOKIE, createAdminSession(expected), {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    maxAge: 60 * 60 * 8,
+    maxAge: ADMIN_SESSION_TTL_MS / 1000,
   });
   return { ok: true };
 }
 
 export async function isAdminAuthed(): Promise<boolean> {
-  return cookies().get(COOKIE)?.value === '1';
+  return verifyAdminSession(cookies().get(COOKIE)?.value, process.env.ADMIN_PASSWORD);
 }
 
 export async function adminLogout(): Promise<void> {

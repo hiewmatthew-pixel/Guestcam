@@ -201,7 +201,7 @@ create policy "anon can insert comments" on public.comments for insert
    - Name: `submissions`
    - Public: **yes** (public read so the gallery can render media)
    - **File size limit**: `30 MB` (we cap clients at 8 MB photo / 30 MB video)
-   - **Allowed MIME types**: `image/jpeg,image/png,image/webp,video/webm,video/mp4`
+   - **Allowed MIME types**: `image/jpeg,image/png,image/webp,video/webm,video/mp4,audio/webm,audio/mp4`
 4. **Storage policy** — add this policy on the `submissions` bucket so the
    anon key can upload:
 
@@ -216,8 +216,9 @@ create policy "anyone can read submissions bucket"
   using (bucket_id = 'submissions');
 ```
 
-5. **Realtime**: in Database → Replication, make sure `submissions` is added
-   to the `supabase_realtime` publication so the gallery updates live.
+5. **Realtime**: in Database → Replication, make sure `submissions` and
+   `comments` are added to the `supabase_realtime` publication so the
+   gallery and comments update live.
 
 6. Copy your project URL and **anon** key from Settings → API into
    `.env.local`. Restart `npm run dev`.
