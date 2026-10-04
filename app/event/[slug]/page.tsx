@@ -636,7 +636,11 @@ export default function EventCapturePage() {
                 />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={pendingUrl} alt="" className="max-h-[70vh] w-auto" />
+                <img
+                  src={pendingUrl}
+                  alt=""
+                  className="max-h-[max(220px,calc(100dvh-240px))] max-w-full w-auto"
+                />
               )}
               {tier.features.customCoupleOverlay && (
                 <CoupleOverlay
@@ -649,7 +653,7 @@ export default function EventCapturePage() {
           ) : (
             <video
               src={pendingUrl}
-              className="max-h-[70vh] w-auto"
+              className="max-h-[max(220px,calc(100dvh-240px))] max-w-full w-auto"
               controls
               autoPlay
               playsInline
@@ -658,7 +662,7 @@ export default function EventCapturePage() {
           )}
         </div>
 
-        <div className="px-6 pb-10 pt-4">
+        <div className="px-6 pb-6 pt-3">
           {submittedOk ? (
             <p className="text-center font-serif italic text-2xl text-gold-soft">
               Your moment is saved ✦
@@ -834,11 +838,11 @@ export default function EventCapturePage() {
 
         {/* mode toggle — own row, centered, segmented pill */}
         {tier.features.allowVideo || tier.features.allowBoomerang || tier.features.photobooth ? (
-          <div className="px-6 pt-3 flex justify-center">
+          <div className="px-3 min-[420px]:px-6 pt-3 flex justify-center">
             <div
               role="tablist"
               aria-label="capture mode"
-              className="inline-flex items-center gap-1 p-1 rounded-full border border-cream/15 bg-black/40"
+              className="inline-flex max-w-full items-center gap-0.5 min-[420px]:gap-1 p-1 rounded-full border border-cream/15 bg-black/40"
             >
               {(
                 [
@@ -862,7 +866,7 @@ export default function EventCapturePage() {
                         setRecording(false);
                       }}
                       className={[
-                        'px-4 py-1.5 rounded-full text-[11px] uppercase tracking-widest transition-colors disabled:opacity-50',
+                        'px-2.5 min-[420px]:px-4 py-1.5 rounded-full text-[11px] uppercase tracking-wider min-[420px]:tracking-widest whitespace-nowrap transition-colors disabled:opacity-50',
                         active
                           ? 'bg-gold text-ink font-medium shadow-[0_0_0_1px_rgba(184,149,106,0.6)]'
                           : 'text-cream/65 hover:text-cream',
@@ -876,58 +880,43 @@ export default function EventCapturePage() {
           </div>
         ) : null}
 
-        {/* photobooth layout picker */}
+        {/* photobooth layout + timer: one row, scrolls sideways on narrow phones */}
         {mode === 'booth' && (
-          <div className="px-6 pt-3 flex justify-center gap-2 flex-wrap">
-            {FRAMES.map((f) => {
-              const active = boothLayout === f.id;
-              return (
-                <button
-                  key={f.id}
-                  type="button"
-                  disabled={boothRunning}
-                  onClick={() => setBoothLayout(f.id)}
-                  className={[
-                    'px-3 py-1.5 rounded-sm border text-[10px] uppercase tracking-widest transition-colors disabled:opacity-50',
-                    active
-                      ? 'border-gold text-gold'
-                      : 'border-cream/20 text-cream/60 hover:text-cream',
-                  ].join(' ')}
-                  title={f.blurb}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* photobooth countdown timer */}
-        {mode === 'booth' && (
-          <div className="px-6 pt-3 flex items-center justify-center gap-2">
-            <span className="text-[10px] uppercase tracking-widest text-cream/40">
-              timer
-            </span>
-            {[3, 5, 10].map((secs) => {
-              const active = boothTimer === secs;
-              return (
-                <button
-                  key={secs}
-                  type="button"
-                  disabled={boothRunning}
-                  onClick={() => setBoothTimer(secs)}
-                  aria-pressed={active}
-                  className={[
-                    'px-3 py-1 rounded-full border text-[10px] uppercase tracking-widest transition-colors disabled:opacity-50',
-                    active
-                      ? 'border-gold bg-gold/15 text-gold'
-                      : 'border-cream/20 text-cream/60 hover:text-cream',
-                  ].join(' ')}
-                >
-                  {secs}s
-                </button>
-              );
-            })}
+          <div className="pt-2 overflow-x-auto no-scrollbar">
+            <div className="px-3 min-[420px]:px-4 flex items-center gap-1 min-[420px]:gap-1.5 w-max mx-auto">
+              {FRAMES.map((f) => {
+                const active = boothLayout === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    disabled={boothRunning}
+                    onClick={() => setBoothLayout(f.id)}
+                    aria-pressed={active}
+                    className={[
+                      'shrink-0 px-2 min-[420px]:px-2.5 py-1.5 rounded-sm border text-[10px] uppercase tracking-wide min-[420px]:tracking-wider whitespace-nowrap transition-colors disabled:opacity-50',
+                      active
+                        ? 'border-gold text-gold'
+                        : 'border-cream/20 text-cream/60 hover:text-cream',
+                    ].join(' ')}
+                    title={f.blurb}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+              <span className="shrink-0 mx-1 h-4 w-px bg-cream/20" aria-hidden />
+              {/* one button cycles the countdown so the row fits small phones */}
+              <button
+                type="button"
+                disabled={boothRunning}
+                onClick={() => setBoothTimer((t) => (t === 3 ? 5 : t === 5 ? 10 : 3))}
+                aria-label={`countdown timer: ${boothTimer} seconds, tap to change`}
+                className="shrink-0 px-2 min-[420px]:px-2.5 py-1.5 rounded-full border border-gold bg-gold/15 text-gold text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors disabled:opacity-50"
+              >
+                ⏱ {boothTimer}s
+              </button>
+            </div>
           </div>
         )}
 

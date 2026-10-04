@@ -255,12 +255,24 @@ export default function Gallery({
       {/* Lightbox */}
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-ink/95 grid place-items-center p-4"
+          className="fixed inset-0 z-50 bg-ink/95 overflow-y-auto overscroll-contain"
           onClick={() => setOpen(null)}
+          role="dialog"
+          aria-modal="true"
         >
+          {/* always-visible close, clear of the notch */}
+          <button
+            onClick={() => setOpen(null)}
+            aria-label="close"
+            style={{ top: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}
+            className="fixed z-[55] right-3 w-10 h-10 rounded-full bg-ink/70 border border-cream/20 text-cream text-xl leading-none grid place-items-center"
+          >
+            ×
+          </button>
+          <div className="min-h-full grid place-items-center px-4 pt-16 pb-safe-4">
           <div
             className={[
-              'max-w-5xl w-full grid gap-6 md:gap-8 items-start',
+              'max-w-5xl w-full grid grid-cols-[minmax(0,1fr)] gap-6 md:gap-8 items-start',
               showComments && ev
                 ? 'md:grid-cols-[minmax(0,1fr)_320px]'
                 : '',
@@ -270,11 +282,15 @@ export default function Gallery({
             <div className="min-w-0">
             {open.media_type === 'photo' ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={open.media_url} alt="" className="w-full h-auto" />
+              <img
+                src={open.media_url}
+                alt=""
+                className="mx-auto max-w-full w-auto h-auto max-h-[calc(100dvh-170px)] object-contain"
+              />
             ) : open.media_type === 'boomerang' ? (
               <video
                 src={open.media_url}
-                className="w-full h-auto"
+                className="mx-auto max-w-full w-auto h-auto max-h-[calc(100dvh-170px)]"
                 autoPlay
                 playsInline
                 loop
@@ -294,17 +310,23 @@ export default function Gallery({
                 <audio src={open.media_url} controls autoPlay className="mt-8 w-full" />
               </div>
             ) : (
-              <video src={open.media_url} className="w-full h-auto" controls autoPlay playsInline />
+              <video
+                src={open.media_url}
+                className="mx-auto max-w-full w-auto h-auto max-h-[calc(100dvh-170px)]"
+                controls
+                autoPlay
+                playsInline
+              />
             )}
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <div className="text-cream/80 text-xs tracking-widest uppercase">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+              <div className="min-w-0 text-cream/80 text-xs tracking-widest uppercase">
                 <span className="font-serif italic normal-case text-base text-cream">
                   {open.guest_name ?? 'anonymous'}
                 </span>
                 <span className="text-cream/50"> · {open.filter_name}</span>
                 <span className="text-cream/50"> · {labelFor(open.media_type)}</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <ActionButton
                   onClick={() => onToggleFav(open)}
                   active={favs.has(open.id)}
@@ -313,12 +335,6 @@ export default function Gallery({
                 />
                 <ActionButton onClick={() => onShare(open)} label="share" glyph="↗" />
                 <ActionButton onClick={() => onDownload(open)} label="download" glyph="↓" />
-                <button
-                  onClick={() => setOpen(null)}
-                  className="text-[10px] uppercase tracking-widest text-cream/60 hover:text-cream px-2 py-1"
-                >
-                  close
-                </button>
               </div>
             </div>
             </div>
@@ -327,6 +343,7 @@ export default function Gallery({
                 <CommentThread eventId={ev} submissionId={open.id} />
               </aside>
             )}
+          </div>
           </div>
         </div>
       )}

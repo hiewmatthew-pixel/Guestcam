@@ -235,21 +235,21 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
   if (!set || library.length === 0) {
     // nothing to do — render the image plain
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" className="max-h-[70vh] w-auto" />;
+    return <img src={src} alt="" className="max-h-[max(200px,calc(100dvh-340px))] max-w-full w-auto" />;
   }
 
   return (
     <div className="relative inline-block max-w-full">
       <div
         ref={containerRef}
-        className="relative inline-block max-w-full"
+        className="relative block w-fit mx-auto max-w-full"
         onPointerDown={() => setActiveUid(null)}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
           alt=""
-          className="block max-h-[70vh] w-auto pointer-events-none select-none"
+          className="block max-h-[max(200px,calc(100dvh-340px))] max-w-full w-auto pointer-events-none select-none"
           draggable={false}
         />
 
