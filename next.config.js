@@ -15,6 +15,8 @@ const csp = [
   `img-src 'self' data: blob: ${supabaseOrigin}`,
   `media-src 'self' data: blob: ${supabaseOrigin}`,
   `connect-src 'self' ${supabaseOrigin} ${supabaseOrigin.replace('https:', 'wss:')}`,
+  `worker-src 'self'`,
+  `manifest-src 'self'`,
   `frame-ancestors 'none'`,
   `base-uri 'self'`,
   `form-action 'self'`,
@@ -36,12 +38,26 @@ const nextConfig = {
       { protocol: 'https', hostname: '*.supabase.co' },
     ],
   },
+  async rewrites() {
+    // Browsers and crawlers still probe /favicon.ico directly; serve the
+    // generated PNG icon (app/icon.tsx) there instead of a 404.
+    return [{ source: '/favicon.ico', destination: '/icon' }];
+  },
   async headers() {
     return [
       // global security headers
       {
         source: '/:path*',
         headers: securityHeaders,
+      },
+      // service worker: always revalidate so new deploys are picked up promptly
+      {
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache' },
+          { key: 'Service-Worker-Allowed', value: '/' },
+          { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
+        ],
       },
       // private portal pages: don't leak the magic-link token via Referer
       {
