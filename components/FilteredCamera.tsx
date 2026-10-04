@@ -616,7 +616,7 @@ export default function FilteredCamera({
   }
 
   return (
-    <div className="relative w-full h-full bg-black overflow-hidden">
+    <div className="absolute inset-0 bg-black overflow-hidden">
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full object-cover"
