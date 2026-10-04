@@ -5,6 +5,7 @@ import { labelForMediaType, type SubmissionRow } from '@/lib/supabase';
 import { isFavorite, listFavorites, toggleFavorite } from '@/lib/favorites';
 import { shareMedia, type ShareResult } from '@/lib/share';
 import CommentThread from '@/components/CommentThread';
+import { extensionFor } from '@/lib/media';
 
 type Props = {
   items: SubmissionRow[];
@@ -148,7 +149,7 @@ export default function Gallery({
   }
 
   async function onDownload(it: SubmissionRow) {
-    const ext = it.media_type === 'photo' ? 'jpg' : it.media_type === 'voice' ? 'webm' : 'webm';
+    const ext = extensionFor(it);
     const who = it.guest_name ? `-${it.guest_name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}` : '';
     const name = `glance-${it.media_type}${who}.${ext}`;
     try {

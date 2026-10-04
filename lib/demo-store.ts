@@ -186,3 +186,22 @@ export function subscribeToSubmissions(
     window.removeEventListener('ggc:submission-update', handler as EventListener);
   };
 }
+
+export const DEMO_EVENT_ID = 'demo-event';
+
+/** The always-available /event/demo event (never touches Supabase). */
+export function makeDemoEvent(welcome_message: string | null = null): EventRow {
+  const now = new Date();
+  return {
+    id: DEMO_EVENT_ID,
+    slug: 'demo',
+    couple_names: 'Sarah & James',
+    wedding_date: now.toISOString().slice(0, 10),
+    welcome_message,
+    tier: 'signature',
+    manage_token: 'demo-portal',
+    reveal_at: null,
+    auto_approve: true,
+    created_at: now.toISOString(),
+  };
+}

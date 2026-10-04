@@ -1,14 +1,26 @@
 'use server';
 
-import { getSupabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase-admin';
+import {
+  getSupabaseAdmin,
+  isSupabaseAdminConfigured,
+  isUuid,
+  notifyModerationChange,
+} from '@/lib/supabase-admin';
 import { cleanString, constantTimeEqual, LIMITS } from '@/lib/validate';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { checkRateLimit, peekRateLimit } from '@/lib/rate-limit';
 import {
   PUBLIC_EVENT_COLUMNS,
   toEventRow,
   type EventRow,
   type PublicEvent,
+  type SubmissionRow,
 } from '@/lib/supabase';
+import { headers } from 'next/headers';
+
+function clientIp(): string {
+  const h = headers();
+  return h.get('x-forwarded-for')?.split(',')[0].trim() || h.get('x-real-ip') || 'unknown';
+}
 
 type AuthOk = { ok: true; eventId: string };
 type AuthErr = { ok: false; error: string; reason: 'missing' | 'denied' | 'config' | 'rate' };
@@ -27,9 +39,11 @@ async function authorizePortal(slugRaw: string, tokenRaw: string): Promise<AuthO
   const token = String(tokenRaw || '').slice(0, LIMITS.TOKEN);
   if (!slug || !token) return { ok: false, error: 'Missing slug or token.', reason: 'missing' };
 
-  // throttle brute-force attempts against the token, keyed by slug
-  const rl = checkRateLimit(`portal:${slug}`, 20, 60_000);
-  if (!rl.allowed) {
+  // Throttle brute-force guessing. Only FAILED attempts count, keyed by
+  // slug + IP, so a couple moderating quickly never locks themselves out
+  // and a stranger can't lock the portal for everyone.
+  const rlKey = `portal-fail:${slug}:${clientIp()}`;
+  if (!peekRateLimit(rlKey, 20)) {
     return { ok: false, error: 'Too many attempts. Try again shortly.', reason: 'rate' };
   }
 
@@ -41,6 +55,7 @@ async function authorizePortal(slugRaw: string, tokenRaw: string): Promise<AuthO
     .maybeSingle();
   if (error || !ev) return { ok: false, error: 'Event not found.', reason: 'missing' };
   if (!constantTimeEqual(token, (ev as { manage_token: string }).manage_token)) {
+    checkRateLimit(rlKey, 20, 5 * 60_000);
     return { ok: false, error: 'Invalid portal link.', reason: 'denied' };
   }
   return { ok: true, eventId: (ev as { id: string }).id };
@@ -85,7 +100,7 @@ export async function updateWelcomeAction(input: {
     .from('events')
     .update({ welcome_message: message || null })
     .eq('id', auth.eventId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: 'Could not save. Please try again.' };
   return { ok: true };
 }
 
@@ -100,8 +115,8 @@ export async function setSubmissionApprovedAction(input: {
   submission_id: string;
   approved: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
-  const id = String(input.submission_id || '').slice(0, 80);
-  if (!id) return { ok: false, error: 'Missing submission id.' };
+  const id = input.submission_id;
+  if (!isUuid(id)) return { ok: false, error: 'Bad submission id.' };
   const auth = await authorizePortal(input.slug, input.token);
   if (!auth.ok) return { ok: false, error: auth.error };
 
@@ -111,7 +126,8 @@ export async function setSubmissionApprovedAction(input: {
     .update({ approved: input.approved })
     .eq('id', id)
     .eq('event_id', auth.eventId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: 'Could not update. Please try again.' };
+  await notifyModerationChange(auth.eventId);
   return { ok: true };
 }
 
@@ -131,6 +147,25 @@ export async function setAutoApproveAction(input: {
     .from('events')
     .update({ auto_approve: !!input.auto_approve })
     .eq('id', auth.eventId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: 'Could not update. Please try again.' };
   return { ok: true };
+}
+
+/**
+ * Every submission for the couple's event, pending and hidden included.
+ * Anon RLS only exposes approved rows, so the portal reads through here.
+ */
+export async function listPortalSubmissionsAction(input: {
+  slug: string;
+  token: string;
+}): Promise<SubmissionRow[] | null> {
+  const auth = await authorizePortal(input.slug, input.token);
+  if (!auth.ok) return null;
+  const { data, error } = await getSupabaseAdmin()!
+    .from('submissions')
+    .select('*')
+    .eq('event_id', auth.eventId)
+    .order('created_at', { ascending: false });
+  if (error) return null;
+  return (data ?? []) as SubmissionRow[];
 }

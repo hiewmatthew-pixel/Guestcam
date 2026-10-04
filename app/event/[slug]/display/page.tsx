@@ -1,5 +1,6 @@
 'use client';
 
+import { watchSubmissions } from '@/lib/live-submissions';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import {
@@ -8,6 +9,7 @@ import {
   listSubmissions,
   subscribeToSubmissions,
 } from '@/lib/demo-store';
+import { DEMO_EVENT_ID, makeDemoEvent } from '@/lib/demo-store';
 import {
   fetchPublicEventBySlug,
   getSupabase,
@@ -21,6 +23,9 @@ import { getTier, isGalleryExpired } from '@/lib/tiers';
 const PHOTO_DURATION_MS = 6000;
 // boomerangs loop forever; advance after they've played for a beat.
 const BOOMERANG_DURATION_MS = 6000;
+// videos advance on `ended`; this is the safety net for a clip that
+// can't decode or whose autoplay is blocked (clips are capped at 15s)
+const VIDEO_FALLBACK_MS = 20000;
 
 export default function DisplaySlideshowPage() {
   const params = useParams<{ slug: string }>();
@@ -39,21 +44,10 @@ export default function DisplaySlideshowPage() {
 
     async function load() {
       if (slug === 'demo') {
-        const demoEvent: EventRow = {
-          id: 'demo-event',
-          slug: 'demo',
-          couple_names: 'Sarah & James',
-          wedding_date: new Date().toISOString().slice(0, 10),
-          welcome_message: null,
-          tier: 'signature',
-          manage_token: 'demo-portal',
-          reveal_at: null,
-          auto_approve: true,
-          created_at: new Date().toISOString(),
-        };
+        const demoEvent = makeDemoEvent();
         setEvent(demoEvent);
-        setItems(listSubmissions('demo-event'));
-        unsub = subscribeToSubmissions('demo-event', setItems);
+        setItems(listSubmissions(DEMO_EVENT_ID));
+        unsub = subscribeToSubmissions(DEMO_EVENT_ID, setItems);
         return;
       }
 
@@ -70,59 +64,20 @@ export default function DisplaySlideshowPage() {
         const ev = await fetchPublicEventBySlug(sb, slug);
         if (cancelled || !ev) return;
         setEvent(ev);
-        const { data: subs } = await sb
-          .from('submissions')
-          .select('*')
-          .eq('event_id', ev.id)
-          .eq('approved', true)
-          .order('created_at', { ascending: false });
-        if (cancelled) return;
-        setItems((subs ?? []) as SubmissionRow[]);
-
-        const channel = sb
-          .channel(`display-${ev.id}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'submissions',
-              filter: `event_id=eq.${ev.id}`,
-            },
-            (payload) => {
-              const row = payload.new as SubmissionRow;
-              if (row.approved) {
-                setItems((cur) =>
-                  cur.some((c) => c.id === row.id) ? cur : [row, ...cur],
-                );
-              }
-            },
-          )
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE',
-              schema: 'public',
-              table: 'submissions',
-              filter: `event_id=eq.${ev.id}`,
-            },
-            (payload) => {
-              const row = payload.new as SubmissionRow;
-              setItems((cur) => {
-                const has = cur.some((c) => c.id === row.id);
-                if (row.approved) {
-                  return has
-                    ? cur.map((c) => (c.id === row.id ? row : c))
-                    : [row, ...cur];
-                }
-                return has ? cur.filter((c) => c.id !== row.id) : cur;
-              });
-            },
-          )
-          .subscribe();
-        unsub = () => {
-          sb.removeChannel(channel);
-        };
+        unsub = watchSubmissions({
+          eventId: ev.id,
+          load: async () => {
+            const { data, error } = await sb
+              .from('submissions')
+              .select('*')
+              .eq('event_id', ev.id)
+              .eq('approved', true)
+              .order('created_at', { ascending: false });
+            if (error) throw error;
+            return (data ?? []) as SubmissionRow[];
+          },
+          onRows: setItems,
+        });
       }
     }
 
@@ -144,8 +99,11 @@ export default function DisplaySlideshowPage() {
     if (idx >= playable.length && playable.length > 0) setIdx(0);
   }, [playable.length, idx]);
 
+  // bumps on every advance so a one-item slideshow still replays
+  const [cycle, setCycle] = useState(0);
   const advance = useCallback(() => {
     setIdx((cur) => (playable.length === 0 ? 0 : (cur + 1) % playable.length));
+    setCycle((c) => c + 1);
   }, [playable.length]);
 
   const back = useCallback(() => {
@@ -159,7 +117,7 @@ export default function DisplaySlideshowPage() {
   // for the slide that's currently on screen.
   //   - photos:    timer-driven (6s)
   //   - boomerang: timer-driven (6s, loops in background)
-  //   - video:     <video onEnded> drives advance; no timer needed.
+  //   - video:     <video onEnded/onError> drives advance; 20s fallback.
   const currentId = playable[idx]?.id;
   const currentKind = playable[idx]?.media_type;
   useEffect(() => {
@@ -171,12 +129,12 @@ export default function DisplaySlideshowPage() {
     let ms = 0;
     if (currentKind === 'photo') ms = PHOTO_DURATION_MS;
     else if (currentKind === 'boomerang') ms = BOOMERANG_DURATION_MS;
-    else return; // 'video' — onEnded drives it
+    else ms = VIDEO_FALLBACK_MS;
     timerRef.current = window.setTimeout(advance, ms) as unknown as number;
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
-  }, [currentId, currentKind, paused, advance]);
+  }, [currentId, currentKind, paused, advance, cycle]);
 
   // keyboard controls
   useEffect(() => {
@@ -279,7 +237,7 @@ export default function DisplaySlideshowPage() {
   return (
     <main className="fixed inset-0 bg-black text-cream overflow-hidden select-none">
       {/* Layered current + previous for cross-fade */}
-      <SlideMedia key={current!.id} item={current!} onEnded={advance} paused={paused} />
+      <SlideMedia key={`${current!.id}-${cycle}`} item={current!} onEnded={advance} paused={paused} />
 
       {/* caption */}
       <div className="absolute inset-x-0 bottom-0 z-10 px-12 pb-10 bg-gradient-to-t from-black/80 to-transparent">
@@ -325,6 +283,14 @@ function SlideMedia({
   onEnded: () => void;
   paused: boolean;
 }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (paused) v.pause();
+    else v.play().catch(() => {});
+  }, [paused]);
+
   if (item.media_type === 'photo') {
     return (
       // eslint-disable-next-line @next/next/no-img-element
@@ -337,6 +303,7 @@ function SlideMedia({
   }
   return (
     <video
+      ref={videoRef}
       src={item.media_url}
       className="absolute inset-0 w-full h-full object-contain animate-slide-in"
       autoPlay={!paused}
@@ -344,8 +311,9 @@ function SlideMedia({
       loop={item.media_type === 'boomerang'}
       muted={item.media_type === 'boomerang'}
       onEnded={() => {
-        if (item.media_type !== 'boomerang') onEnded();
+        if (item.media_type !== 'boomerang' && !paused) onEnded();
       }}
+      onError={onEnded}
     />
   );
 }

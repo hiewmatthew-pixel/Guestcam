@@ -133,6 +133,13 @@ export default function FilteredCamera({
   const glRef = useRef<WebGLRenderingContext | null>(null);
   const programRef = useRef<WebGLProgram | null>(null);
   const textureRef = useRef<WebGLTexture | null>(null);
+  const posBufRef = useRef<WebGLBuffer | null>(null);
+  const texBufRef = useRef<WebGLBuffer | null>(null);
+  const uniformsRef = useRef<{
+    time: WebGLUniformLocation | null;
+    res: WebGLUniformLocation | null;
+    strength: WebGLUniformLocation | null;
+  }>({ time: null, res: null, strength: null });
   const currentFilterRef = useRef<FilterId>(filter);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -184,8 +191,16 @@ export default function FilteredCamera({
     gl.attachShader(program, vs);
     gl.attachShader(program, fs);
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.warn('program link error:', gl.getProgramInfoLog(program));
+    const ok = gl.getProgramParameter(program, gl.LINK_STATUS);
+    if (!ok) console.warn('program link error:', gl.getProgramInfoLog(program));
+    // shaders are only needed until link; flag them for deletion so they
+    // are freed together with the program
+    gl.detachShader(program, vs);
+    gl.detachShader(program, fs);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    if (!ok) {
+      gl.deleteProgram(program);
       return null;
     }
     return program;
@@ -193,25 +208,32 @@ export default function FilteredCamera({
 
   const setupGeometry = useCallback((gl: WebGLRenderingContext, program: WebGLProgram) => {
     // full-screen quad
-    const posBuf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
-      gl.STATIC_DRAW,
-    );
+    // buffers are created once and reused across filter switches
+    if (!posBufRef.current) {
+      posBufRef.current = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, posBufRef.current);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+        gl.STATIC_DRAW,
+      );
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBufRef.current);
     const aPos = gl.getAttribLocation(program, 'a_position');
     gl.enableVertexAttribArray(aPos);
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
     // tex coords (flip Y so the video isn't upside-down)
-    const texBuf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, texBuf);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0]),
-      gl.STATIC_DRAW,
-    );
+    if (!texBufRef.current) {
+      texBufRef.current = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, texBufRef.current);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0]),
+        gl.STATIC_DRAW,
+      );
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, texBufRef.current);
     const aTex = gl.getAttribLocation(program, 'a_texCoord');
     gl.enableVertexAttribArray(aTex);
     gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 0, 0);
@@ -224,8 +246,14 @@ export default function FilteredCamera({
       const def = getFilter(id);
       const program = buildProgram(gl, def.fragmentShader);
       if (!program) return;
+      if (programRef.current) gl.deleteProgram(programRef.current);
       gl.useProgram(program);
       programRef.current = program;
+      uniformsRef.current = {
+        time: gl.getUniformLocation(program, 'u_time'),
+        res: gl.getUniformLocation(program, 'u_resolution'),
+        strength: gl.getUniformLocation(program, 'u_strength'),
+      };
       setupGeometry(gl, program);
 
       // texture (re-bind in case program changed)
@@ -392,9 +420,7 @@ export default function FilteredCamera({
           gl.bindTexture(gl.TEXTURE_2D, tex);
           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
 
-          const uTime = gl.getUniformLocation(program, 'u_time');
-          const uRes = gl.getUniformLocation(program, 'u_resolution');
-          const uStrength = gl.getUniformLocation(program, 'u_strength');
+          const { time: uTime, res: uRes, strength: uStrength } = uniformsRef.current;
           gl.uniform1f(uTime, (performance.now() - startedAtRef.current) / 1000);
           gl.uniform2f(uRes, vw, vh);
           // uStrength may be null on the pass-through shader (uniform
@@ -428,9 +454,23 @@ export default function FilteredCamera({
 
   // --- capture: video --------------------------------------------
 
-  const startRecording = useCallback(async () => {
+  // Parent callbacks live in a ref so the recorder effect below only
+  // reacts to mode/recording changes. Depending on the callbacks directly
+  // restarted the recorder on every parent re-render (slider drag, mic
+  // notice, ...), leaking recorders and keeping the mic on.
+  const cbRef = useRef({ onVideoCaptured, onRecorderError, onMicUnavailable });
+  cbRef.current = { onVideoCaptured, onRecorderError, onMicUnavailable };
+
+  // Bumped on every start/stop so an in-flight start (awaiting the mic
+  // prompt) can tell it was cancelled before the recorder began.
+  const recSessionRef = useRef(0);
+  const captureStreamRef = useRef<MediaStream | null>(null);
+
+  const startRecording = useCallback(async (recMode: 'video' | 'boomerang') => {
     const webglCanvas = canvasRef.current;
-    if (!webglCanvas) return;
+    if (!webglCanvas || recorderRef.current) return;
+    const session = ++recSessionRef.current;
+    const { onRecorderError, onMicUnavailable } = cbRef.current;
 
     // If a couple-name overlay is active, blit the WebGL canvas onto a
     // hidden 2D output canvas every frame and paint the overlay on top,
@@ -471,13 +511,14 @@ export default function FilteredCamera({
       onRecorderError?.('Video recording not supported on this device.');
       return;
     }
+    captureStreamRef.current = captureStream;
 
     // Attach the microphone only for full video. Boomerangs loop in the
     // gallery so audio would be jarring; keep them silent. The mic is
     // requested on demand so the OS mic indicator stays dark during
     // photo / boomerang capture, and a guest who denies mic permission
     // can still record a silent video instead of losing the camera.
-    if (mode === 'video') {
+    if (recMode === 'video') {
       try {
         const mic = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -487,6 +528,11 @@ export default function FilteredCamera({
           },
           video: false,
         });
+        if (session !== recSessionRef.current) {
+          // stopped (or unmounted) while the mic prompt was open
+          mic.getTracks().forEach((t) => t.stop());
+          return;
+        }
         micStreamRef.current = mic;
         for (const t of mic.getAudioTracks()) {
           try {
@@ -496,6 +542,7 @@ export default function FilteredCamera({
           }
         }
       } catch {
+        if (session !== recSessionRef.current) return;
         // mic denied or unavailable — record silently but tell the guest
         // so they aren't surprised by a soundless clip
         onMicUnavailable?.();
@@ -523,11 +570,12 @@ export default function FilteredCamera({
         ? new MediaRecorder(captureStream, { mimeType, videoBitsPerSecond: 4_000_000 })
         : new MediaRecorder(captureStream);
     } catch (e: any) {
+      stopRecordingInternal(true);
       onRecorderError?.(e?.message || 'Could not start recorder.');
       return;
     }
 
-    const isBoomerang = mode === 'boomerang';
+    const isBoomerang = recMode === 'boomerang';
     recordedChunksRef.current = [];
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) recordedChunksRef.current.push(e.data);
@@ -536,7 +584,7 @@ export default function FilteredCamera({
       const type = recorder.mimeType || 'video/webm';
       const blob = new Blob(recordedChunksRef.current, { type });
       recordedChunksRef.current = [];
-      onVideoCaptured(blob, isBoomerang ? 'boomerang' : 'video');
+      cbRef.current.onVideoCaptured(blob, isBoomerang ? 'boomerang' : 'video');
     };
     recorder.start(250);
     recorderRef.current = recorder;
@@ -546,9 +594,11 @@ export default function FilteredCamera({
     videoStopTimerRef.current = window.setTimeout(() => {
       stopRecordingInternal();
     }, cap * 1000);
-  }, [onRecorderError, onVideoCaptured, onMicUnavailable, mode]);
+  }, []);
 
-  const stopRecordingInternal = useCallback(() => {
+  /** Stop recording. `discard` drops the clip (used on unmount). */
+  const stopRecordingInternal = useCallback((discard = false) => {
+    recSessionRef.current++;
     if (videoStopTimerRef.current) {
       clearTimeout(videoStopTimerRef.current);
       videoStopTimerRef.current = null;
@@ -558,23 +608,29 @@ export default function FilteredCamera({
       outputRafRef.current = null;
     }
     const rec = recorderRef.current;
+    if (rec && discard) rec.onstop = null;
     if (rec && rec.state !== 'inactive') rec.stop();
     recorderRef.current = null;
     // release the mic immediately so the OS indicator goes dark
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
     micStreamRef.current = null;
+    captureStreamRef.current?.getVideoTracks().forEach((t) => t.stop());
+    captureStreamRef.current = null;
   }, []);
 
   // driven from parent via mode/recording props
   useEffect(() => {
     if (mode === 'video' || mode === 'boomerang') {
       if (recording) {
-        startRecording();
+        startRecording(mode);
       } else {
         stopRecordingInternal();
       }
     }
   }, [mode, recording, startRecording, stopRecordingInternal]);
+
+  // leaving the camera mid-recording: drop the clip and free the mic
+  useEffect(() => () => stopRecordingInternal(true), [stopRecordingInternal]);
 
   // imperative-ish: parent calls onPhotoCaptured via a refless contract.
   // We expose capture via a small effect that watches a "request" prop.

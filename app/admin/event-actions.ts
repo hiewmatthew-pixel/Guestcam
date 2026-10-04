@@ -2,11 +2,17 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from './actions';
-import { getSupabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase-admin';
+import {
+  deleteEventMedia,
+  getSupabaseAdmin,
+  isSupabaseAdminConfigured,
+  isUuid,
+  notifyModerationChange,
+} from '@/lib/supabase-admin';
 import { generateManageToken } from '@/lib/tokens';
 import { cleanString, LIMITS, toSlug, ValidationError } from '@/lib/validate';
 import { TIER_LIST, DEFAULT_TIER, getTier, type TierId } from '@/lib/tiers';
-import type { EventRow } from '@/lib/supabase';
+import type { EventRow, SubmissionRow } from '@/lib/supabase';
 
 /**
  * Admin-only event reads. The admin pages can't use the anon client for
@@ -111,7 +117,7 @@ export async function createEventAction(
       if (error.code === '23505') {
         return { ok: false, error: 'An event with that slug already exists.' };
       }
-      return { ok: false, error: error.message };
+      return { ok: false, error: 'Could not create event.' };
     }
     revalidatePath('/admin');
     return { ok: true, slug };
@@ -134,9 +140,11 @@ export async function deleteEventAction(
       return { ok: false, error: 'Bad event id.' };
     }
     const sb = getSupabaseAdmin()!;
+    // the bucket is public, so remove the files too, not just the rows
+    await deleteEventMedia(id);
     await sb.from('submissions').delete().eq('event_id', id);
     const { error } = await sb.from('events').delete().eq('id', id);
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: 'Could not delete event.' };
     revalidatePath('/admin');
     return { ok: true };
   } catch (e: any) {
@@ -154,14 +162,17 @@ export async function adminSetSubmissionApprovedAction(input: {
     if (!isSupabaseAdminConfigured) {
       return { ok: false, error: 'Supabase service role key is not configured on the server.' };
     }
-    const id = String(input.submission_id || '').slice(0, 80);
-    if (!id) return { ok: false, error: 'Bad submission id.' };
+    const id = input.submission_id;
+    if (!isUuid(id)) return { ok: false, error: 'Bad submission id.' };
     const sb = getSupabaseAdmin()!;
-    const { error } = await sb
+    const { data, error } = await sb
       .from('submissions')
       .update({ approved: !!input.approved })
-      .eq('id', id);
-    if (error) return { ok: false, error: error.message };
+      .eq('id', id)
+      .select('event_id')
+      .maybeSingle();
+    if (error) return { ok: false, error: 'Could not update.' };
+    if (data?.event_id) await notifyModerationChange(data.event_id as string);
     return { ok: true };
   } catch (e: any) {
     if (e?.message === 'Not authorized.') return { ok: false, error: 'Not authorized.' };
@@ -183,10 +194,27 @@ export async function rotateTokenAction(
     const sb = getSupabaseAdmin()!;
     const next = generateManageToken();
     const { error } = await sb.from('events').update({ manage_token: next }).eq('id', id);
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: 'Could not rotate token.' };
     return { ok: true, manage_token: next };
   } catch (e: any) {
     if (e?.message === 'Not authorized.') return { ok: false, error: 'Not authorized.' };
     return { ok: false, error: 'Could not rotate token.' };
+  }
+}
+
+/** Every submission for an event (pending + hidden), for the admin page. */
+export async function adminListSubmissionsAction(eventId: string): Promise<SubmissionRow[] | null> {
+  try {
+    await requireAdmin();
+    if (!isSupabaseAdminConfigured || !isUuid(eventId)) return null;
+    const { data, error } = await getSupabaseAdmin()!
+      .from('submissions')
+      .select('*')
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: false });
+    if (error) return null;
+    return (data ?? []) as SubmissionRow[];
+  } catch {
+    return null;
   }
 }

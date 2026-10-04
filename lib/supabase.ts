@@ -93,3 +93,21 @@ export type CommentRow = {
   body: string;
   created_at: string;
 };
+
+const MEDIA_PREFIX = url ? `${url.replace(/\/+$/, '')}/storage/v1/object/public/submissions/` : '';
+
+/**
+ * True when a submission's media_url points at this project's own
+ * submissions bucket, inside that event's folder. Rows are inserted by
+ * guests with the anon key, so never render, share or fetch a URL that
+ * fails this check. Demo-mode data: URLs are local and always allowed.
+ */
+export function isTrustedMediaUrl(row: Pick<SubmissionRow, 'media_url' | 'event_id'>): boolean {
+  if (row.media_url.startsWith('data:')) return true;
+  return !!MEDIA_PREFIX && row.media_url.startsWith(`${MEDIA_PREFIX}${row.event_id}/`);
+}
+
+/** Broadcast channel the server pings after a moderation change. */
+export function moderationChannelName(eventId: string): string {
+  return `moderation-${eventId}`;
+}

@@ -11,7 +11,10 @@ import StickerEditor, { type PlacedSticker } from '@/components/StickerEditor';
 import CoupleOverlay from '@/components/CoupleOverlay';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import { FILTERS, FilterId } from '@/lib/filters';
+import { extForBlob } from '@/lib/media';
+import { discardOrphanUploadAction } from './actions';
 import { addSubmission, getEventBySlug, isDemoMode, setDemoMode } from '@/lib/demo-store';
+import { DEMO_EVENT_ID, makeDemoEvent } from '@/lib/demo-store';
 import {
   fetchPublicEventBySlug,
   getSupabase,
@@ -89,18 +92,7 @@ export default function EventCapturePage() {
     async function load() {
       // demo special-case: /event/demo always works
       if (slug === 'demo') {
-        const demoEvent: EventRow = {
-          id: 'demo-event',
-          slug: 'demo',
-          couple_names: 'Sarah & James',
-          wedding_date: new Date().toISOString().slice(0, 10),
-          welcome_message: null,
-          tier: 'signature',
-          manage_token: 'demo-portal',
-          reveal_at: null,
-          auto_approve: true,
-          created_at: new Date().toISOString(),
-        };
+        const demoEvent = makeDemoEvent();
         if (!cancelled) {
           setEvent(demoEvent);
           setLoading(false);
@@ -270,7 +262,7 @@ export default function EventCapturePage() {
     setSavingLocal(true);
     try {
       let outBlob = pendingBlob;
-      let ext = pendingType === 'photo' ? 'jpg' : 'webm';
+      let ext = extForBlob(pendingBlob, pendingType);
       if (pendingType === 'photo') {
         try {
           outBlob = await compositePhoto(
@@ -315,7 +307,7 @@ export default function EventCapturePage() {
   }) {
     if (!event) return;
     const approved = event.auto_approve !== false;
-    const useSupabase = isSupabaseConfigured && !demo && event.id !== 'demo-event';
+    const useSupabase = isSupabaseConfigured && !demo && event.id !== DEMO_EVENT_ID;
 
     if (!useSupabase) {
       await addSubmission({
@@ -330,9 +322,7 @@ export default function EventCapturePage() {
     }
 
     const sb = getSupabase()!;
-    const path = `${event.id}/${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}.${args.ext}`;
+    const path = `${event.id}/${Date.now()}-${crypto.randomUUID()}.${args.ext}`;
 
     if (args.showProgress) setUploadProgress(0);
     let mediaUrl: string;
@@ -358,7 +348,7 @@ export default function EventCapturePage() {
     });
     if (insert.error) {
       // roll back the orphaned storage object, then surface the error
-      sb.storage.from('submissions').remove([path]).catch(() => {});
+      discardOrphanUploadAction(path).catch(() => {});
       throw insert.error;
     }
   }
@@ -370,7 +360,7 @@ export default function EventCapturePage() {
       blob,
       mediaType: 'voice',
       filterName: '—',
-      ext: blob.type.includes('mp4') ? 'm4a' : 'webm',
+      ext: extForBlob(blob, 'voice'),
       contentType: blob.type || 'audio/webm',
       guestName: cleanGuest,
     });
@@ -428,7 +418,7 @@ export default function EventCapturePage() {
         blob: uploadBlob,
         mediaType: pendingType,
         filterName: filter,
-        ext: pendingType === 'photo' ? 'jpg' : 'webm',
+        ext: extForBlob(uploadBlob, pendingType),
         contentType:
           uploadBlob.type || (pendingType === 'photo' ? 'image/jpeg' : 'video/webm'),
         guestName: cleanGuest,
@@ -489,7 +479,7 @@ export default function EventCapturePage() {
   // Welcome
   if (stage === 'welcome') {
     return (
-      <main className="min-h-screen flex flex-col">
+      <main className="min-h-screen min-h-dvh flex flex-col pt-safe pb-safe">
         <header className="px-6 pt-8 flex items-center gap-3">
           <Link
             href="/"
@@ -617,7 +607,7 @@ export default function EventCapturePage() {
   // Review
   if (stage === 'review' && pendingUrl) {
     return (
-      <main className="min-h-screen flex flex-col bg-ink text-cream">
+      <main className="min-h-screen min-h-dvh flex flex-col bg-ink text-cream pt-safe pb-safe">
         <header className="px-6 pt-6 flex items-center justify-between">
           <button
             onClick={retake}
@@ -712,10 +702,13 @@ export default function EventCapturePage() {
 
   // Capture
   return (
-    <main className="min-h-screen flex flex-col bg-ink text-cream">
+    <main className="h-screen h-dvh overflow-hidden flex flex-col bg-ink text-cream pt-safe pb-safe">
       <header className="px-4 pt-3 pb-2 flex items-center justify-between">
         <button
-          onClick={() => setStage('welcome')}
+          onClick={() => {
+            setRecording(false);
+            setStage('welcome');
+          }}
           className="text-[10px] uppercase tracking-widest text-cream/80"
         >
           ← exit

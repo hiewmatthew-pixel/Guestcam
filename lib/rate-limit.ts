@@ -56,3 +56,10 @@ export function checkRateLimit(
   existing.count += 1;
   return { allowed: true, remaining: limit - existing.count, resetAt: existing.resetAt };
 }
+
+/** True if `key` still has budget under `limit`, without consuming any. */
+export function peekRateLimit(key: string, limit: number): boolean {
+  const b = buckets.get(key);
+  if (!b || b.resetAt <= Date.now()) return true;
+  return b.count < limit;
+}

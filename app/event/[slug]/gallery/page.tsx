@@ -1,5 +1,6 @@
 'use client';
 
+import { watchSubmissions } from '@/lib/live-submissions';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -13,6 +14,7 @@ import {
   listSubmissions,
   subscribeToSubmissions,
 } from '@/lib/demo-store';
+import { DEMO_EVENT_ID, makeDemoEvent } from '@/lib/demo-store';
 import {
   fetchPublicEventBySlug,
   getSupabase,
@@ -39,23 +41,12 @@ export default function EventGalleryPage() {
     async function load() {
       // demo event
       if (slug === 'demo') {
-        const demoEvent: EventRow = {
-          id: 'demo-event',
-          slug: 'demo',
-          couple_names: 'Sarah & James',
-          wedding_date: new Date().toISOString().slice(0, 10),
-          welcome_message: null,
-          tier: 'signature',
-          manage_token: 'demo-portal',
-          reveal_at: null,
-          auto_approve: true,
-          created_at: new Date().toISOString(),
-        };
+        const demoEvent = makeDemoEvent();
         setEvent(demoEvent);
         const onChange = (rows: SubmissionRow[]) =>
           setItems(rows.filter((r) => r.approved));
-        onChange(listSubmissions('demo-event'));
-        unsub = subscribeToSubmissions('demo-event', onChange);
+        onChange(listSubmissions(DEMO_EVENT_ID));
+        unsub = subscribeToSubmissions(DEMO_EVENT_ID, onChange);
         setLoading(false);
         return;
       }
@@ -80,61 +71,28 @@ export default function EventGalleryPage() {
           return;
         }
         setEvent(ev);
-        const { data: subs, error: subsErr } = await sb
-          .from('submissions')
-          .select('*')
-          .eq('event_id', ev.id)
-          .eq('approved', true)
-          .order('created_at', { ascending: false });
-        if (cancelled) return;
-        if (subsErr) throw subsErr;
-        setItems((subs ?? []) as SubmissionRow[]);
-
-        // realtime
-        const channel = sb
-          .channel(`sub-${ev.id}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'submissions',
-              filter: `event_id=eq.${ev.id}`,
-            },
-            (payload) => {
-              const row = payload.new as SubmissionRow;
-              if (row.approved) {
-                setItems((curr) =>
-                  curr.some((c) => c.id === row.id) ? curr : [row, ...curr],
-                );
-              }
-            },
-          )
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE',
-              schema: 'public',
-              table: 'submissions',
-              filter: `event_id=eq.${ev.id}`,
-            },
-            (payload) => {
-              const row = payload.new as SubmissionRow;
-              setItems((curr) => {
-                const has = curr.some((c) => c.id === row.id);
-                if (row.approved) {
-                  return has
-                    ? curr.map((c) => (c.id === row.id ? row : c))
-                    : [row, ...curr];
-                }
-                return has ? curr.filter((c) => c.id !== row.id) : curr;
-              });
-            },
-          )
-          .subscribe();
-        unsub = () => {
-          sb.removeChannel(channel);
-        };
+        unsub = watchSubmissions({
+          eventId: ev.id,
+          load: async () => {
+            const { data, error } = await sb
+              .from('submissions')
+              .select('*')
+              .eq('event_id', ev.id)
+              .eq('approved', true)
+              .order('created_at', { ascending: false });
+            if (error) throw error;
+            return (data ?? []) as SubmissionRow[];
+          },
+          onRows: (rows) => {
+            setItems(rows);
+            setLoading(false);
+          },
+          onError: () => {
+            setLoadError(true);
+            setLoading(false);
+          },
+        });
+        return;
       }
       setLoading(false);
     }

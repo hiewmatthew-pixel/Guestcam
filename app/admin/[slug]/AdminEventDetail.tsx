@@ -1,5 +1,7 @@
 'use client';
 
+import { watchSubmissions } from '@/lib/live-submissions';
+import { extensionFor } from '@/lib/media';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import QRCode from '@/components/QRCode';
@@ -18,11 +20,11 @@ import {
   type EventRow,
   type SubmissionRow,
 } from '@/lib/supabase';
-import { downloadAsZip } from '@/lib/zip';
 import { formatPriceCAD, getTier } from '@/lib/tiers';
 import { safeFilenamePart } from '@/lib/validate';
 import {
   adminGetEventBySlugAction,
+  adminListSubmissionsAction,
   adminSetSubmissionApprovedAction,
   rotateTokenAction,
 } from '../event-actions';
@@ -55,52 +57,18 @@ export default function AdminEventDetail({ slug }: Props) {
       }
 
       if (isSupabaseConfigured && !isDemoMode()) {
-        const sb = getSupabase()!;
-        // event read goes through the admin server action (needs the
-        // service role to see manage_token); submissions are public.
+        // event + submissions read through admin server actions: the
+        // manage_token and pending rows aren't visible to the anon key.
         const ev = await adminGetEventBySlugAction(slug);
         if (cancelled) return;
         if (ev) {
           setEvent(ev);
-          const { data: subs } = await sb
-            .from('submissions')
-            .select('*')
-            .eq('event_id', ev.id)
-            .order('created_at', { ascending: false });
-          setItems((subs ?? []) as SubmissionRow[]);
-
-          const channel = sb
-            .channel(`admin-sub-${ev.id}`)
-            .on(
-              'postgres_changes',
-              {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'submissions',
-                filter: `event_id=eq.${ev.id}`,
-              },
-              (payload) => {
-                const r = payload.new as SubmissionRow;
-                setItems((curr) =>
-                  curr.some((c) => c.id === r.id) ? curr : [r, ...curr],
-                );
-              },
-            )
-            .on(
-              'postgres_changes',
-              {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'submissions',
-                filter: `event_id=eq.${ev.id}`,
-              },
-              (payload) => {
-                const r = payload.new as SubmissionRow;
-                setItems((curr) => curr.map((c) => (c.id === r.id ? r : c)));
-              },
-            )
-            .subscribe();
-          unsub = () => sb.removeChannel(channel);
+          unsub = watchSubmissions({
+            eventId: ev.id,
+            load: () => adminListSubmissionsAction(ev.id),
+            onRows: setItems,
+            pollMs: 15_000,
+          });
         }
       }
       setLoading(false);
@@ -182,13 +150,14 @@ export default function AdminEventDetail({ slug }: Props) {
     setDownloading(true);
     try {
       const zipped = items.map((it, i) => {
-        const ext = it.media_type === 'photo' ? 'jpg' : 'webm';
+        const ext = extensionFor(it);
         const kind = it.media_type === 'boomerang' ? 'boomerang' : it.media_type;
         const filter = safeFilenamePart(it.filter_name);
         const who = safeFilenamePart(it.guest_name);
         const name = `${String(i + 1).padStart(3, '0')}-${kind}-${filter}-${who}.${ext}`;
         return { url: it.media_url, filename: name };
       });
+      const { downloadAsZip } = await import('@/lib/zip');
       await downloadAsZip(zipped, `${slug}-gallery.zip`);
     } finally {
       setDownloading(false);

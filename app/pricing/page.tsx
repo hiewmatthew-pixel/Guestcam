@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { TIER_LIST, formatPriceCAD } from '@/lib/tiers';
-
-const INQUIRY_EMAIL = 'hello@goldenglancestudio.com';
+import { CONTACT_EMAIL as INQUIRY_EMAIL } from '@/lib/contact';
 
 function inquiryHref(tierLabel: string, price: number) {
   const subject = `GlanceCam · ${tierLabel}`;
@@ -156,7 +155,10 @@ export default function PricingPage() {
       </section>
 
       <footer className="px-6 py-8 text-center text-[10px] tracking-widest uppercase text-ink/40 border-t border-warm-gray-light">
-        Crafted in Toronto · goldenglancestudio.com
+        Crafted in Toronto ·{' '}
+        <a href={`mailto:${INQUIRY_EMAIL}`} className="underline-offset-4 hover:underline">
+          {INQUIRY_EMAIL}
+        </a>
       </footer>
     </main>
   );

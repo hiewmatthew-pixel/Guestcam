@@ -4,7 +4,7 @@
 // tab. This posts straight to the storage REST endpoint via XHR so we
 // get progress events, and retries transient failures with backoff.
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, '');
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export type UploadOpts = {

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import Logo from '@/components/Logo';
+import { CONTACT_EMAIL, mailto } from '@/lib/contact';
 
 export default function MarketingPage() {
   return (
@@ -52,7 +53,10 @@ export default function MarketingPage() {
       </section>
 
       <footer className="px-6 py-6 text-center text-[10px] tracking-widest uppercase text-ink/40">
-        Crafted in Toronto · goldenglancestudio.com
+        Crafted in Toronto ·{' '}
+        <a href={mailto('GlanceCam inquiry')} className="underline-offset-4 hover:underline">
+          {CONTACT_EMAIL}
+        </a>
       </footer>
     </main>
   );

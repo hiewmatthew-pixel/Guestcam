@@ -1,5 +1,6 @@
 'use client';
 
+import { watchSubmissions } from '@/lib/live-submissions';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -14,17 +15,20 @@ import {
   subscribeToSubmissions,
   updateEvent,
 } from '@/lib/demo-store';
+import { DEMO_EVENT_ID, makeDemoEvent } from '@/lib/demo-store';
 import {
   getSupabase,
   isSupabaseConfigured,
   type EventRow,
   type SubmissionRow,
 } from '@/lib/supabase';
-import { downloadAsZip } from '@/lib/zip';
+import { extensionFor } from '@/lib/media';
+import { CONTACT_EMAIL, mailto } from '@/lib/contact';
 import { getTier } from '@/lib/tiers';
 import { constantTimeEqual, LIMITS, safeFilenamePart } from '@/lib/validate';
 import {
   getPortalEventAction,
+  listPortalSubmissionsAction,
   updateWelcomeAction,
   setSubmissionApprovedAction,
   setAutoApproveAction,
@@ -62,23 +66,11 @@ export default function CouplePortalPage() {
           setAccess('denied');
           return;
         }
-        const demoEvent: EventRow = {
-          id: 'demo-event',
-          slug: 'demo',
-          couple_names: 'Sarah & James',
-          wedding_date: new Date().toISOString().slice(0, 10),
-          welcome_message:
-            'A small note from us — capture anything that makes you smile tonight.',
-          tier: 'signature',
-          manage_token: 'demo-portal',
-          reveal_at: null,
-          auto_approve: true,
-          created_at: new Date().toISOString(),
-        };
+        const demoEvent = makeDemoEvent('A small note from us — capture anything that makes you smile tonight.');
         setEvent(demoEvent);
         setWelcomeDraft(demoEvent.welcome_message ?? '');
-        setItems(listSubmissions('demo-event'));
-        unsub = subscribeToSubmissions('demo-event', setItems);
+        setItems(listSubmissions(DEMO_EVENT_ID));
+        unsub = subscribeToSubmissions(DEMO_EVENT_ID, setItems);
         setAccess('ok');
         return;
       }
@@ -101,7 +93,6 @@ export default function CouplePortalPage() {
       // supabase — verify the token server-side; the browser never sees
       // the real manage_token (it isn't selectable with the anon key).
       if (isSupabaseConfigured && !isDemoMode()) {
-        const sb = getSupabase()!;
         const res = await getPortalEventAction({ slug, token });
         if (cancelled) return;
         if (!res.ok) {
@@ -112,46 +103,14 @@ export default function CouplePortalPage() {
         setEvent(row);
         setWelcomeDraft(row.welcome_message ?? '');
 
-        // portal: couple sees every submission, approved or pending
-        const { data: subs } = await sb
-          .from('submissions')
-          .select('*')
-          .eq('event_id', row.id)
-          .order('created_at', { ascending: false });
-        if (!cancelled) setItems((subs ?? []) as SubmissionRow[]);
-
-        const channel = sb
-          .channel(`portal-${row.id}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'submissions',
-              filter: `event_id=eq.${row.id}`,
-            },
-            (payload) => {
-              const r = payload.new as SubmissionRow;
-              setItems((curr) =>
-                curr.some((c) => c.id === r.id) ? curr : [r, ...curr],
-              );
-            },
-          )
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE',
-              schema: 'public',
-              table: 'submissions',
-              filter: `event_id=eq.${row.id}`,
-            },
-            (payload) => {
-              const r = payload.new as SubmissionRow;
-              setItems((curr) => curr.map((c) => (c.id === r.id ? r : c)));
-            },
-          )
-          .subscribe();
-        unsub = () => sb.removeChannel(channel);
+        // portal: couple sees every submission, approved or pending. Anon
+        // can't read pending rows, so the list comes from a server action.
+        unsub = watchSubmissions({
+          eventId: row.id,
+          load: () => listPortalSubmissionsAction({ slug, token }),
+          onRows: setItems,
+          pollMs: 15_000,
+        });
         setAccess('ok');
         return;
       }
@@ -215,7 +174,7 @@ export default function CouplePortalPage() {
         return;
       }
       // supabase via server action — verifies the token server-side
-      if (isSupabaseConfigured && !isDemoMode() && event.id !== 'demo-event') {
+      if (isSupabaseConfigured && !isDemoMode() && event.id !== DEMO_EVENT_ID) {
         const res = await updateWelcomeAction({
           slug,
           token,
@@ -242,7 +201,7 @@ export default function CouplePortalPage() {
       setEvent({ ...event, auto_approve: next });
       return;
     }
-    if (isSupabaseConfigured && !isDemoMode() && event.id !== 'demo-event') {
+    if (isSupabaseConfigured && !isDemoMode() && event.id !== DEMO_EVENT_ID) {
       const res = await setAutoApproveAction({ slug, token, auto_approve: next });
       if (!res.ok) {
         alert(res.error || 'Could not save.');
@@ -266,11 +225,11 @@ export default function CouplePortalPage() {
       return;
     }
     // for the always-on demo event, also write through to the local store
-    if (event.id === 'demo-event') {
+    if (event.id === DEMO_EVENT_ID) {
       setSubmissionApproval(submissionId, approved);
       return;
     }
-    if (isSupabaseConfigured && !isDemoMode() && event.id !== 'demo-event') {
+    if (isSupabaseConfigured && !isDemoMode() && event.id !== DEMO_EVENT_ID) {
       const res = await setSubmissionApprovedAction({
         slug,
         token,
@@ -290,15 +249,6 @@ export default function CouplePortalPage() {
   // actual bytes (voice notes on iOS are mp4/m4a, not webm).
   const approvedItems = items.filter((it) => it.approved);
 
-  function extensionFor(it: SubmissionRow): string {
-    if (it.media_type === 'photo') return 'jpg';
-    if (it.media_type === 'voice') {
-      // try to detect from the stored URL; the mime type isn't on the row
-      const m = it.media_url.match(/\.([a-z0-9]+)(?:\?|$)/i);
-      return m ? m[1].toLowerCase() : 'webm';
-    }
-    return 'webm';
-  }
 
   async function handleDownloadZip() {
     if (approvedItems.length === 0) return;
@@ -312,6 +262,7 @@ export default function CouplePortalPage() {
         const name = `${String(i + 1).padStart(3, '0')}-${kind}-${filter}-${who}.${ext}`;
         return { url: it.media_url, filename: name };
       });
+      const { downloadAsZip } = await import('@/lib/zip');
       await downloadAsZip(zipped, `${slug}-gallery.zip`);
     } finally {
       setDownloading(false);
@@ -523,6 +474,11 @@ export default function CouplePortalPage() {
 
       <footer className="px-6 py-8 text-center text-[10px] tracking-widest uppercase text-ink/40 border-t border-warm-gray-light">
         private link · share only with people you want in your gallery
+        <br />
+        questions?{' '}
+        <a href={mailto('GlanceCam portal help')} className="underline-offset-4 hover:underline normal-case tracking-normal">
+          {CONTACT_EMAIL}
+        </a>
       </footer>
     </main>
   );

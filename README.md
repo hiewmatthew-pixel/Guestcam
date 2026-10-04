@@ -67,159 +67,27 @@ secure path.
 ## Supabase setup
 
 1. Create a new Supabase project at https://supabase.com.
-2. In **SQL editor**, run:
-
-```sql
--- events
-create table if not exists public.events (
-  id uuid primary key default gen_random_uuid(),
-  slug text unique not null,
-  couple_names text not null,
-  wedding_date date not null,
-  welcome_message text,
-  tier text not null default 'signature' check (tier in ('glimpse', 'signature', 'studio')),
-  manage_token text not null,
-  reveal_at timestamptz,
-  auto_approve boolean not null default true,
-  created_at timestamptz not null default now()
-);
-create index if not exists events_manage_token_idx on public.events(manage_token);
-
--- if you created the events table before these columns existed:
--- alter table public.events add column if not exists tier text not null default 'signature';
--- alter table public.events add column if not exists manage_token text;
--- update public.events set manage_token = encode(gen_random_bytes(9), 'base64') where manage_token is null;
--- alter table public.events alter column manage_token set not null;
---
--- to extend the media_type allowlist if you already created submissions:
--- alter table public.submissions drop constraint if exists submissions_media_type_check;
--- alter table public.submissions add constraint submissions_media_type_check
---   check (media_type in ('photo', 'video', 'boomerang', 'voice'));
---
--- to add reveal_at + auto_approve if events already existed:
--- alter table public.events add column if not exists reveal_at timestamptz;
--- alter table public.events add column if not exists auto_approve boolean not null default true;
---
--- SECURITY (apply to existing installs): stop leaking manage_token to anon
--- revoke select on public.events from anon;
--- grant select (id, slug, couple_names, wedding_date, welcome_message,
---   tier, reveal_at, auto_approve, created_at) on public.events to anon;
---
--- and tighten the comments insert policy to match event_id to its submission:
--- drop policy if exists "anon can insert comments" on public.comments;
--- (then re-create it from the definition below)
-
--- submissions
-create table if not exists public.submissions (
-  id uuid primary key default gen_random_uuid(),
-  event_id uuid not null references public.events(id) on delete cascade,
-  media_url text not null,
-  media_type text not null check (media_type in ('photo', 'video', 'boomerang', 'voice')),
-  filter_name text not null,
-  guest_name text,
-  approved boolean not null default true,
-  created_at timestamptz not null default now()
-);
-create index if not exists submissions_event_idx on public.submissions(event_id, created_at desc);
-
--- enable RLS
-alter table public.events enable row level security;
-alter table public.submissions enable row level security;
-
--- ANON CAN ONLY READ events. All event create/update/delete + token
--- rotation goes through server actions in app/admin/event-actions.ts
--- that use the SUPABASE_SERVICE_ROLE_KEY after verifying the admin
--- cookie (or, for portal welcome updates, the manage_token).
-create policy "events readable by anyone"
-  on public.events for select
-  using (true);
-
--- COLUMN-LEVEL SECURITY: manage_token is the couple's portal credential
--- and must NEVER reach the browser. Remove anon's blanket SELECT and
--- re-grant only the guest-safe columns. After this, `select('*')` from
--- the anon key errors; the app uses PUBLIC_EVENT_COLUMNS (lib/supabase.ts)
--- for all guest reads, and portal/admin reads go through server actions
--- that run with the service role (which bypasses these grants).
-revoke select on public.events from anon;
-grant select (
-  id, slug, couple_names, wedding_date, welcome_message,
-  tier, reveal_at, auto_approve, created_at
-) on public.events to anon;
--- if you use the 'authenticated' role too, mirror the two lines above for it.
-
--- anyone can read approved submissions (public gallery)
-create policy "approved submissions readable by anyone"
-  on public.submissions for select
-  using (approved = true);
-
--- anon can insert a submission tied to an existing event row
-create policy "anon can insert submissions"
-  on public.submissions for insert
-  with check (
-    media_type in ('photo', 'video', 'boomerang', 'voice')
-    and exists (select 1 from public.events e where e.id = event_id)
-  );
-
--- per-photo comments (guests can write short text against a submission)
-create table if not exists public.comments (
-  id uuid primary key default gen_random_uuid(),
-  submission_id uuid not null references public.submissions(id) on delete cascade,
-  event_id uuid not null references public.events(id) on delete cascade,
-  guest_name text,
-  body text not null check (char_length(body) between 1 and 280),
-  created_at timestamptz not null default now()
-);
-create index if not exists comments_submission_idx on public.comments(submission_id);
-create index if not exists comments_event_idx on public.comments(event_id);
-alter table public.comments enable row level security;
-create policy "comments readable by anyone" on public.comments for select using (true);
-create policy "anon can insert comments" on public.comments for insert
-  with check (
-    char_length(body) between 1 and 280
-    -- the submission must exist AND the event_id must match its owner,
-    -- so a comment can't be mis-attributed to the wrong event
-    and exists (
-      select 1 from public.submissions s
-      where s.id = submission_id and s.event_id = comments.event_id
-    )
-  );
-
--- intentionally NO policy for anon INSERT/UPDATE/DELETE on events,
--- and NO policy for anon UPDATE/DELETE on submissions/comments.
--- service_role bypasses RLS so server actions still work.
-```
-
-> **Why no anon policies for event mutations?** The anon key ships in the
-> browser bundle. Letting anon callers create or delete events with that
-> key would mean anyone running `curl` against your Supabase REST endpoint
-> could bypass the admin password. Mutations therefore route through
-> server actions that (a) verify the admin cookie or magic-link token,
-> then (b) execute with the service_role key on the server. The
-> service_role key must NEVER appear in any `NEXT_PUBLIC_*` env var.
-
-3. **Storage**: in the Supabase dashboard → Storage → New bucket:
-   - Name: `submissions`
-   - Public: **yes** (public read so the gallery can render media)
-   - **File size limit**: `30 MB` (we cap clients at 8 MB photo / 30 MB video)
-   - **Allowed MIME types**: `image/jpeg,image/png,image/webp,video/webm,video/mp4,audio/webm,audio/mp4`
-4. **Storage policy** — add this policy on the `submissions` bucket so the
-   anon key can upload:
-
-```sql
--- in Storage > Policies > New policy on bucket "submissions"
-create policy "anon can upload to submissions bucket"
-  on storage.objects for insert
-  with check (bucket_id = 'submissions');
-
-create policy "anyone can read submissions bucket"
-  on storage.objects for select
-  using (bucket_id = 'submissions');
-```
-
-5. **Realtime**: in Database → Replication, make sure `submissions` and
-   `comments` are added to the `supabase_realtime` publication so the
-   gallery and comments update live.
-
+2. **Storage** → New bucket:
+   - Name: `submissions`, Public: **yes**, File size limit: `30 MB`
+   - Allowed MIME types: `image/jpeg,image/png,image/webp,video/webm,video/mp4,audio/webm,audio/mp4`
+3. **SQL editor** → paste all of [`supabase/schema.sql`](supabase/schema.sql) → Run.
+   It's idempotent, so the same file sets up a new project *and* upgrades
+   an existing one. It creates the tables, RLS policies, storage policies
+   and realtime publication.
+4. Re-run it whenever `supabase/schema.sql` changes.
+5. What the schema enforces (so the anon key in the browser can't
+   bypass it):
+   - `manage_token` is never selectable by anon (column-level grants).
+   - Guests can't set `approved` themselves; a trigger copies the
+     event's auto-approve setting.
+   - The gallery reveal time and expiry are enforced in the select
+     policy, not just in the UI.
+   - `media_url` must point into this event's folder of the bucket.
+   - There's no storage list policy, so nobody can enumerate files.
+   - All event mutations and moderation go through server actions that
+     use the service-role key after checking the admin cookie or the
+     couple's token. The service-role key must never be in a
+     `NEXT_PUBLIC_*` variable.
 6. Copy your project URL and **anon** key from Settings → API into
    `.env.local`. Restart `npm run dev`.
 

@@ -36,109 +36,7 @@ device's own captures.
 supabase.com → **New project**. Pick a region close to your guests. Save the
 database password somewhere safe.
 
-### 2b. Run the schema (SQL Editor → New query → paste → Run)
-
-This includes the security grants that keep the couple's `manage_token` away
-from guests. **Don't skip the `revoke` / `grant` lines.**
-
-```sql
--- events
-create table if not exists public.events (
-  id uuid primary key default gen_random_uuid(),
-  slug text unique not null,
-  couple_names text not null,
-  wedding_date date not null,
-  welcome_message text,
-  tier text not null default 'signature' check (tier in ('glimpse', 'signature', 'studio')),
-  manage_token text not null,
-  reveal_at timestamptz,
-  auto_approve boolean not null default true,
-  created_at timestamptz not null default now()
-);
-create index if not exists events_manage_token_idx on public.events(manage_token);
-
-
--- submissions
-create table if not exists public.submissions (
-  id uuid primary key default gen_random_uuid(),
-  event_id uuid not null references public.events(id) on delete cascade,
-  media_url text not null,
-  media_type text not null check (media_type in ('photo', 'video', 'boomerang', 'voice')),
-  filter_name text not null,
-  guest_name text,
-  approved boolean not null default true,
-  created_at timestamptz not null default now()
-);
-create index if not exists submissions_event_idx on public.submissions(event_id, created_at desc);
-
--- enable RLS
-alter table public.events enable row level security;
-alter table public.submissions enable row level security;
-
--- ANON CAN ONLY READ events. All event create/update/delete + token
--- rotation goes through server actions in app/admin/event-actions.ts
--- that use the SUPABASE_SERVICE_ROLE_KEY after verifying the admin
--- cookie (or, for portal welcome updates, the manage_token).
-create policy "events readable by anyone"
-  on public.events for select
-  using (true);
-
--- COLUMN-LEVEL SECURITY: manage_token is the couple's portal credential
--- and must NEVER reach the browser. Remove anon's blanket SELECT and
--- re-grant only the guest-safe columns. After this, `select('*')` from
--- the anon key errors; the app uses PUBLIC_EVENT_COLUMNS (lib/supabase.ts)
--- for all guest reads, and portal/admin reads go through server actions
--- that run with the service role (which bypasses these grants).
-revoke select on public.events from anon;
-grant select (
-  id, slug, couple_names, wedding_date, welcome_message,
-  tier, reveal_at, auto_approve, created_at
-) on public.events to anon;
--- if you use the 'authenticated' role too, mirror the two lines above for it.
-
--- anyone can read approved submissions (public gallery)
-create policy "approved submissions readable by anyone"
-  on public.submissions for select
-  using (approved = true);
-
--- anon can insert a submission tied to an existing event row
-create policy "anon can insert submissions"
-  on public.submissions for insert
-  with check (
-    media_type in ('photo', 'video', 'boomerang', 'voice')
-    and exists (select 1 from public.events e where e.id = event_id)
-  );
-
--- per-photo comments (guests can write short text against a submission)
-create table if not exists public.comments (
-  id uuid primary key default gen_random_uuid(),
-  submission_id uuid not null references public.submissions(id) on delete cascade,
-  event_id uuid not null references public.events(id) on delete cascade,
-  guest_name text,
-  body text not null check (char_length(body) between 1 and 280),
-  created_at timestamptz not null default now()
-);
-create index if not exists comments_submission_idx on public.comments(submission_id);
-create index if not exists comments_event_idx on public.comments(event_id);
-alter table public.comments enable row level security;
-create policy "comments readable by anyone" on public.comments for select using (true);
-create policy "anon can insert comments" on public.comments for insert
-  with check (
-    char_length(body) between 1 and 280
-    -- the submission must exist AND the event_id must match its owner,
-    -- so a comment can't be mis-attributed to the wrong event
-    and exists (
-      select 1 from public.submissions s
-      where s.id = submission_id and s.event_id = comments.event_id
-    )
-  );
-
--- intentionally NO policy for anon INSERT/UPDATE/DELETE on events,
--- and NO policy for anon UPDATE/DELETE on submissions/comments.
--- service_role bypasses RLS so server actions still work.
-```
-
-### 2c. Storage bucket
+### 2b. Storage bucket (do this before the SQL)
 Storage → **New bucket**:
 
 | Setting | Value |
@@ -148,24 +46,20 @@ Storage → **New bucket**:
 | File size limit | `30 MB` |
 | Allowed MIME types | `image/jpeg,image/png,image/webp,video/webm,video/mp4,audio/webm,audio/mp4` |
 
-The `audio/*` types are needed for the voice guestbook. If you leave them out,
-voice uploads get rejected.
+The `audio/*` types are needed for the voice guestbook.
 
-Then run these storage policies in the SQL Editor:
+### 2c. Run the schema
+SQL Editor → New query → paste **all** of
+[`supabase/schema.sql`](supabase/schema.sql) → **Run**.
 
-```sql
-create policy "anon can upload to submissions bucket"
-  on storage.objects for insert
-  with check (bucket_id = 'submissions');
+It sets up the tables, the security rules (couple's token hidden from
+guests, no self-approval, reveal/expiry enforced by the database), the
+storage upload policy and realtime. It's safe to run again; re-run it
+whenever that file changes.
 
-create policy "anyone can read submissions bucket"
-  on storage.objects for select
-  using (bucket_id = 'submissions');
-```
-
-### 2d. Realtime
-Database → **Replication** (or Publications) → `supabase_realtime` → enable
-**`submissions`** and **`comments`**.
+### 2d. Check realtime
+Database → Publications → `supabase_realtime` should list `submissions` and
+`comments`. The SQL adds them, so this is only a check.
 
 ### 2e. Env vars on Vercel
 Settings → Environment Variables (Production + Preview). Values come from
@@ -197,7 +91,14 @@ app in demo mode, or with the CSP blocking Supabase.
 4. Open the couple's **portal link** from admin. Moderation hide/approve should
    take effect on the guest gallery.
 5. Open `/event/<slug>/display` on a laptop or TV for the slideshow.
-6. Test inside **Instagram / WhatsApp**: DM yourself the link and open it
+6. **Moderation:** in the portal, turn auto-approve **off**, then take a
+   photo on Phone B. It should appear in the portal as pending and **not**
+   in the guest gallery. Approve it and it shows up. Hide one while the TV
+   display is open and it should disappear within a second or two.
+7. **Install as an app:** on iPhone open the site in Safari → Share → **Add
+   to Home Screen**. On Android, Chrome offers **Install app**. It opens
+   full-screen with the GG icon.
+8. Test inside **Instagram / WhatsApp**: DM yourself the link and open it
    in-app. You should see the "open in Safari/Chrome" guidance if the camera
    is blocked.
 
@@ -216,6 +117,13 @@ app in demo mode, or with the CSP blocking Supabase.
 - **Free Supabase tier** = 1 GB storage ≈ 250 videos. One busy wedding can fill
   it, so upgrade to Pro before a real event.
 
-## Still not built (needed for a public, self-serve launch)
-Stripe checkout + webhook → auto-create event, transactional email (portal link
-/ QR), Terms / Privacy / refund policy, error monitoring and analytics.
+## Payments and contact
+There's no checkout in the app on purpose. Quotes and invoices go out through
+**ShootProof**, and every inquiry and contact link on the site goes to
+**hello@goldenglancestudio.com** (set in `lib/contact.ts`). Once a couple
+books, create their event in `/admin` and send them the QR and portal link.
+
+## Not built yet (optional before going public)
+Terms / Privacy / refund policy pages, error monitoring (Sentry) and
+analytics, a storage cleanup job for expired galleries, and Upstash-backed
+rate limiting.
