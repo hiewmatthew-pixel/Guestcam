@@ -149,6 +149,19 @@ export default function AdminEventList() {
         </div>
       </div>
 
+      {/* Demo mode is sticky (localStorage), so make it impossible to miss:
+          events created here never reach the database or other phones. */}
+      {demo && (
+        <div role="alert" className="mt-6 border border-gold bg-gold/15 p-4 rounded-sm text-sm text-ink">
+          <p className="font-medium">Demo mode is on: nothing here is saved online.</p>
+          <p className="mt-1 text-ink/70">
+            {isSupabaseConfigured
+              ? 'Events you create now live only in this browser, and their QR codes won’t work on guests’ phones. Untick “demo mode” above for real events.'
+              : 'The server has no database configured, so only demo events are possible.'}
+          </p>
+        </div>
+      )}
+
       <form onSubmit={handleCreate} className="mt-8 grid gap-4 border border-warm-gray-light p-5 rounded-sm">
         <div>
           <label className="block text-[10px] uppercase tracking-widest text-ink/60 mb-2">
