@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import plugin from 'tailwindcss/plugin';
 
 const config: Config = {
   content: [
@@ -7,12 +8,6 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      screens: {
-        // very short viewports: Galaxy Z Flip cover screens (~310-400px
-        // tall), phones in landscape. The camera switches to an overlay
-        // layout so the viewfinder keeps the whole screen.
-        short: { raw: '(max-height: 540px)' },
-      },
       colors: {
         cream: '#F5F1EA',
         ink: '#1A1A1A',
@@ -45,7 +40,15 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // `short:` = very short viewports: Galaxy Z Flip cover screens
+    // (~310-400px tall) and phones in landscape. The camera switches to an
+    // overlay layout so the viewfinder keeps the whole screen. Defined as a
+    // variant (not a `screens` entry) so min-[...]/max-[...] keep working.
+    plugin(({ addVariant }) => {
+      addVariant('short', '@media (max-height: 540px)');
+    }),
+  ],
 };
 
 export default config;
