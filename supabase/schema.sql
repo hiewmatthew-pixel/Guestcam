@@ -99,11 +99,14 @@ returns trigger
 language plpgsql security definer set search_path = public
 as $$
 begin
-  select e.auto_approve into new.approved from public.events e where e.id = new.event_id;
-  new.approved := coalesce(new.approved, true);
+  new.approved := coalesce(
+    (select e.auto_approve from public.events e where e.id = new.event_id),
+    true
+  );
   return new;
 end;
 $$;
+revoke execute on function public.submissions_force_approval() from public, anon, authenticated;
 drop trigger if exists submissions_force_approval on public.submissions;
 create trigger submissions_force_approval
   before insert on public.submissions
