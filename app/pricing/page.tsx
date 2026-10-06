@@ -42,7 +42,7 @@ export default function PricingPage() {
   return (
     <main className="min-h-screen flex flex-col">
       <header className="px-6 pt-8 flex items-center gap-3">
-        <Link href="/" className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-3 min-h-11">
           <Logo className="h-5 w-8 text-ink" />
           <span className="text-[11px] tracking-widest uppercase text-ink/70">
             Golden Glance Studio
@@ -50,14 +50,14 @@ export default function PricingPage() {
         </Link>
         <Link
           href="/admin"
-          className="ml-auto text-[10px] uppercase tracking-widest text-ink/60 hover:text-ink"
+          className="ml-auto inline-flex items-center min-h-11 px-1 text-[10px] uppercase tracking-widest text-ink/70 hover:text-ink"
         >
           studio admin
         </Link>
       </header>
 
       <section className="px-6 pt-20 pb-12 text-center">
-        <p className="text-[11px] tracking-widest uppercase text-ink/50 mb-6">
+        <p className="text-[11px] tracking-widest uppercase text-ink/70 mb-6">
           pricing
         </p>
         <h1 className="font-serif italic text-5xl sm:text-6xl leading-[1.05] text-ink max-w-2xl mx-auto">
@@ -65,7 +65,7 @@ export default function PricingPage() {
           <br />
           one shared evening
         </h1>
-        <p className="mt-6 text-ink/65 leading-relaxed max-w-lg mx-auto">
+        <p className="mt-6 text-ink/70 leading-relaxed max-w-lg mx-auto">
           No per-photo fees, no per-guest meters. Pick the tier that fits the
           shape of your day. Everything else is included.
         </p>
@@ -86,20 +86,20 @@ export default function PricingPage() {
                 ].join(' ')}
               >
                 {isHero && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gold text-cream text-[9px] uppercase tracking-widest px-3 py-1 rounded-sm">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gold text-ink text-[9px] uppercase tracking-widest px-3 py-1 rounded-sm">
                     most chosen
                   </span>
                 )}
 
                 <header>
                   <h2 className="font-serif text-3xl text-ink">{t.label}</h2>
-                  <p className="font-serif italic text-ink/55 mt-1">{t.italic}</p>
+                  <p className="font-serif italic text-ink/70 mt-1">{t.italic}</p>
                 </header>
 
                 <p className="mt-6 font-serif italic text-4xl text-ink">
                   {formatPriceCAD(t.price)}
                 </p>
-                <p className="text-[10px] uppercase tracking-widest text-ink/50 mt-1">
+                <p className="text-[10px] uppercase tracking-widest text-ink/70 mt-1">
                   per event · all-in
                 </p>
 
@@ -108,7 +108,7 @@ export default function PricingPage() {
                 <ul className="mt-8 space-y-3 text-sm text-ink/80 flex-1">
                   {t.bullets.map((b) => (
                     <li key={b} className="flex gap-3">
-                      <span className="text-gold mt-1">·</span>
+                      <span aria-hidden className="text-gold-deep mt-1">·</span>
                       <span>{b}</span>
                     </li>
                   ))}
@@ -130,10 +130,10 @@ export default function PricingPage() {
           })}
         </div>
 
-        <p className="mt-10 text-center text-xs text-ink/55 max-w-md mx-auto leading-relaxed">
+        <p className="mt-10 text-center text-xs text-ink/70 max-w-md mx-auto leading-relaxed">
           Reserve with a 25% deposit by e-transfer, balance billed through ShootProof.
         </p>
-        <p className="mt-3 text-center text-[10px] uppercase tracking-widest text-ink/40">
+        <p className="mt-3 text-center text-[10px] uppercase tracking-widest text-ink/70">
           Toronto-based · Prices in CAD · HST included
         </p>
       </section>
@@ -154,9 +154,9 @@ export default function PricingPage() {
         </div>
       </section>
 
-      <footer className="px-6 py-8 text-center text-[10px] tracking-widest uppercase text-ink/40 border-t border-warm-gray-light">
+      <footer className="px-6 py-8 text-center text-[10px] tracking-widest uppercase text-ink/70 border-t border-warm-gray-light">
         Crafted in Toronto ·{' '}
-        <a href={`mailto:${INQUIRY_EMAIL}`} className="underline-offset-4 hover:underline">
+        <a href={`mailto:${INQUIRY_EMAIL}`} className="underline underline-offset-4 decoration-ink/40 hover:decoration-ink">
           {INQUIRY_EMAIL}
         </a>
       </footer>

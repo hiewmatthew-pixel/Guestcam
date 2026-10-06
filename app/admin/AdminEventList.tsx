@@ -16,6 +16,7 @@ import {
 } from '@/lib/supabase';
 import { DEFAULT_TIER, TIER_LIST, TierId, formatPriceCAD, getTier } from '@/lib/tiers';
 import { LIMITS } from '@/lib/validate';
+import { formatWeddingDate } from '@/lib/dates';
 import {
   adminListEventsAction,
   createEventAction,
@@ -128,7 +129,7 @@ export default function AdminEventList() {
       <div className="flex items-center justify-between gap-4">
         <h2 className="font-serif italic text-3xl">events</h2>
         <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-ink/60">
+          <label className="flex items-center gap-2 min-h-11 text-[10px] uppercase tracking-widest text-ink/70 cursor-pointer">
             <input
               type="checkbox"
               checked={demo}
@@ -141,8 +142,9 @@ export default function AdminEventList() {
             demo mode
           </label>
           <button
+            type="button"
             onClick={handleLogout}
-            className="text-[10px] uppercase tracking-widest text-ink/60 hover:text-ink"
+            className="min-h-11 text-[10px] uppercase tracking-widest text-ink/70 hover:text-ink"
           >
             sign out
           </button>
@@ -164,46 +166,49 @@ export default function AdminEventList() {
 
       <form onSubmit={handleCreate} className="mt-8 grid gap-4 border border-warm-gray-light p-5 rounded-sm">
         <div>
-          <label className="block text-[10px] uppercase tracking-widest text-ink/60 mb-2">
+          <label htmlFor="new-couple-names" className="block text-[10px] uppercase tracking-widest text-ink/70 mb-2">
             couple names
           </label>
           <input
+            id="new-couple-names"
             value={coupleNames}
             onChange={(e) => setCoupleNames(e.target.value)}
             maxLength={LIMITS.COUPLE_NAMES}
             placeholder="Sarah & James"
-            className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2"
+            className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold-deep py-2"
           />
         </div>
         <div>
-          <label className="block text-[10px] uppercase tracking-widest text-ink/60 mb-2">
+          <label htmlFor="new-wedding-date" className="block text-[10px] uppercase tracking-widest text-ink/70 mb-2">
             wedding date
           </label>
           <input
+            id="new-wedding-date"
             type="date"
             value={weddingDate}
             onChange={(e) => setWeddingDate(e.target.value)}
-            className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2"
+            className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold-deep py-2"
           />
         </div>
         <div>
-          <label className="block text-[10px] uppercase tracking-widest text-ink/60 mb-2">
-            welcome message <span className="text-ink/40 lowercase">(optional)</span>
+          <label htmlFor="new-welcome" className="block text-[10px] uppercase tracking-widest text-ink/70 mb-2">
+            welcome message <span className="text-ink/70 lowercase">(optional)</span>
           </label>
           <textarea
+            id="new-welcome"
             value={welcome}
             onChange={(e) => setWelcome(e.target.value)}
             maxLength={LIMITS.WELCOME_MESSAGE}
             rows={3}
             placeholder="A short note to your guests…"
-            className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2 resize-none"
+            className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold-deep py-2 resize-none"
           />
         </div>
         <div>
-          <label className="block text-[10px] uppercase tracking-widest text-ink/60 mb-3">
+          <p id="new-tier-label" className="block text-[10px] uppercase tracking-widest text-ink/70 mb-3">
             tier
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          </p>
+          <div role="group" aria-labelledby="new-tier-label" className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {TIER_LIST.map((t) => {
               const isActive = tier === t.id;
               return (
@@ -220,10 +225,10 @@ export default function AdminEventList() {
                   aria-pressed={isActive}
                 >
                   <p className="font-serif text-lg text-ink leading-none">{t.label}</p>
-                  <p className="font-serif italic text-sm text-ink/60 mt-1">
+                  <p className="font-serif italic text-sm text-ink/70 mt-1">
                     {formatPriceCAD(t.price)}
                   </p>
-                  <p className="text-[10px] text-ink/55 mt-2 leading-snug">
+                  <p className="text-[10px] text-ink/70 mt-2 leading-snug">
                     {t.features.allowVideo ? 'photo + video' : 'photo only'} ·{' '}
                     {t.features.filters.length >= 6
                       ? 'all filters'
@@ -236,26 +241,31 @@ export default function AdminEventList() {
         </div>
         {getTier(tier).features.revealMode && (
           <div>
-            <label className="block text-[10px] uppercase tracking-widest text-ink/60 mb-2">
-              reveal at <span className="text-ink/40 lowercase">(optional · disposable-camera mode)</span>
+            <label htmlFor="new-reveal-at" className="block text-[10px] uppercase tracking-widest text-ink/70 mb-2">
+              reveal at <span className="text-ink/70 lowercase">(optional · disposable-camera mode)</span>
             </label>
             <input
-              type="datetime-local"
+              id="new-reveal-at"
+            type="datetime-local"
               value={revealAt}
               onChange={(e) => setRevealAt(e.target.value)}
-              className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2"
+              className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold-deep py-2"
             />
-            <p className="mt-2 text-[11px] text-ink/55 leading-relaxed">
+            <p className="mt-2 text-[11px] text-ink/70 leading-relaxed">
               Until this time the public gallery shows guests a soft countdown
               instead of the photos — like a roll of film developing overnight.
               You and the couple still see everything via the portal at any time.
             </p>
           </div>
         )}
-        {err && <p className="text-sm text-red-700">{err}</p>}
+        {err && (
+          <p role="alert" className="text-sm text-red-700">
+            {err}
+          </p>
+        )}
         <button
           disabled={busy}
-          className="bg-ink text-cream py-3 text-xs uppercase tracking-widest disabled:opacity-60"
+          className="min-h-11 bg-ink text-cream py-3 text-xs uppercase tracking-widest disabled:opacity-60"
         >
           {busy ? 'creating…' : 'create event'}
         </button>
@@ -263,7 +273,7 @@ export default function AdminEventList() {
 
       <ul className="mt-10 divide-y divide-warm-gray-light">
         {events.length === 0 && (
-          <li className="py-10 text-center text-ink/50 italic font-serif">
+          <li className="py-10 text-center text-ink/70 italic font-serif">
             no events yet
           </li>
         )}
@@ -273,22 +283,25 @@ export default function AdminEventList() {
             <li key={ev.id} className="py-4 flex items-center gap-4">
               <div className="flex-1">
                 <p className="font-serif italic text-xl">{ev.couple_names}</p>
-                <p className="text-[11px] uppercase tracking-widest text-ink/50">
-                  {ev.wedding_date} · /{ev.slug}
+                <p className="text-[11px] uppercase tracking-widest text-ink/70">
+                  {formatWeddingDate(ev.wedding_date, 'long') ?? ev.wedding_date} · /{ev.slug}
                 </p>
               </div>
-              <span className="text-[10px] uppercase tracking-widest border border-warm-gray-light text-ink/60 px-2 py-1 rounded-sm">
+              <span className="text-[10px] uppercase tracking-widest border border-warm-gray-light text-ink/70 px-2 py-1 rounded-sm">
                 {t.label}
               </span>
               <Link
                 href={`/admin/${ev.slug}`}
-                className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
+                aria-label={`open ${ev.couple_names}`}
+                className="inline-flex items-center min-h-11 text-[10px] uppercase tracking-widest"
               >
-                open
+                <span className="border-b border-gold pb-0.5">open</span>
               </Link>
               <button
+                type="button"
                 onClick={() => handleDelete(ev.id)}
-                className="text-[10px] uppercase tracking-widest text-ink/50"
+                aria-label={`delete ${ev.couple_names}`}
+                className="min-h-11 px-1 text-[10px] uppercase tracking-widest text-ink/70 hover:text-ink"
               >
                 delete
               </button>

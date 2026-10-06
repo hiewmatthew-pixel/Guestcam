@@ -12,8 +12,7 @@ export default async function AdminPage() {
       <header className="px-6 pt-8 flex items-center gap-3">
         <Link
           href="/"
-          aria-label="back to home"
-          className="flex items-center gap-3 group"
+          className="flex items-center gap-3 group min-h-11"
         >
           <Logo className="h-5 w-8 text-ink" />
           <span className="text-[11px] tracking-widest uppercase text-ink/70 group-hover:text-ink transition-colors">
@@ -26,7 +25,7 @@ export default async function AdminPage() {
         {!authed ? (
           <div className="max-w-sm mx-auto pt-16">
             <h1 className="font-serif italic text-4xl text-center">welcome back</h1>
-            <p className="mt-3 text-center text-ink/60">
+            <p className="mt-3 text-center text-ink/70">
               sign in to manage your events
             </p>
             <div className="mt-10 flex justify-center">

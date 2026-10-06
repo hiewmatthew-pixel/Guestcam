@@ -2,6 +2,7 @@
 // when Supabase is configured, otherwise in localStorage so demo
 // mode + offline development still work.
 
+import { addCommentAction } from '@/app/event/[slug]/actions';
 import { getSupabase, isSupabaseConfigured, type CommentRow } from './supabase';
 import { isDemoMode } from './demo-store';
 
@@ -63,19 +64,15 @@ export async function addComment(input: {
   if (!body) throw new Error('Comment is empty.');
 
   if (useSupabase(input.event_id)) {
-    const sb = getSupabase()!;
-    const { data, error } = await sb
-      .from('comments')
-      .insert({
-        event_id: input.event_id,
-        submission_id: input.submission_id,
-        guest_name: input.guest_name,
-        body,
-      })
-      .select('*')
-      .single();
-    if (error) throw error;
-    return data as CommentRow;
+    // server-checked + rate-limited; the anon key can't insert comments
+    const res = await addCommentAction({
+      eventId: input.event_id,
+      submissionId: input.submission_id,
+      guestName: input.guest_name,
+      body,
+    });
+    if (!res.ok) throw new Error(res.error);
+    return res.comment;
   }
 
   // localStorage fallback

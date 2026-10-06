@@ -8,9 +8,17 @@ type Props = {
   size?: number;
   label?: string;
   fileName?: string;
+  // hide the "download high-res png" control (e.g. on the TV display)
+  showDownload?: boolean;
 };
 
-export default function QRCode({ value, size = 240, label, fileName = 'glancecam-qr.png' }: Props) {
+export default function QRCode({
+  value,
+  size = 240,
+  label,
+  fileName = 'glancecam-qr.png',
+  showDownload = true,
+}: Props) {
   const wrap = useRef<HTMLDivElement>(null);
 
   function downloadPng(highRes = 1024) {
@@ -44,6 +52,8 @@ export default function QRCode({ value, size = 240, label, fileName = 'glancecam
         style={{ boxShadow: '0 1px 0 rgba(26,26,26,0.04)' }}
       >
         <QRCodeCanvas
+          role="img"
+          aria-label={`QR code linking to ${value}`}
           value={value}
           size={size}
           bgColor="#F5F1EA"
@@ -55,12 +65,15 @@ export default function QRCode({ value, size = 240, label, fileName = 'glancecam
       {label && (
         <p className="font-serif italic text-ink/70 text-center">{label}</p>
       )}
-      <button
-        onClick={() => downloadPng(1024)}
-        className="text-xs uppercase tracking-widest text-ink/70 underline-offset-4 underline decoration-gold/60"
-      >
-        download high-res png
-      </button>
+      {showDownload && (
+        <button
+          type="button"
+          onClick={() => downloadPng(1024)}
+          className="min-h-11 px-2 text-xs uppercase tracking-widest text-ink/70 underline-offset-4 underline decoration-gold/60"
+        >
+          download high-res png
+        </button>
+      )}
     </div>
   );
 }

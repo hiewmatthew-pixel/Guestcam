@@ -85,7 +85,7 @@ export default function CommentThread({ eventId, submissionId }: Props) {
   return (
     <div className="text-cream">
       <p className="text-[10px] uppercase tracking-[0.3em] text-cream/55 mb-3">
-        comments {items.length > 0 && <span className="text-cream/40">· {items.length}</span>}
+        comments {items.length > 0 && <span className="text-cream/65">· {items.length}</span>}
       </p>
 
       <div
@@ -93,10 +93,10 @@ export default function CommentThread({ eventId, submissionId }: Props) {
         className="max-h-56 md:max-h-72 overflow-y-auto pr-1 space-y-2"
       >
         {loading && (
-          <p className="text-[11px] text-cream/45 italic">loading…</p>
+          <p className="text-[11px] text-cream/65 italic">loading…</p>
         )}
         {!loading && items.length === 0 && (
-          <p className="text-[11px] text-cream/45 italic">
+          <p className="text-[11px] text-cream/65 italic">
             be the first to leave a note.
           </p>
         )}
@@ -121,7 +121,7 @@ export default function CommentThread({ eventId, submissionId }: Props) {
           onChange={(e) => setName(e.target.value)}
           maxLength={60}
           placeholder="your name (optional)"
-          className="w-full bg-cream/5 border border-cream/15 focus:border-gold outline-none text-cream placeholder:text-cream/35 text-sm px-3 py-2 rounded-sm"
+          className="w-full bg-cream/5 border border-cream/15 focus:border-gold outline-none text-cream placeholder:text-cream/65 text-sm px-3 py-2 rounded-sm"
         />
         <div className="flex items-stretch gap-2">
           <input
@@ -129,7 +129,7 @@ export default function CommentThread({ eventId, submissionId }: Props) {
             onChange={(e) => setBody(e.target.value)}
             maxLength={280}
             placeholder="leave a short note…"
-            className="flex-1 bg-cream/5 border border-cream/15 focus:border-gold outline-none text-cream placeholder:text-cream/35 text-sm px-3 py-2 rounded-sm"
+            className="flex-1 bg-cream/5 border border-cream/15 focus:border-gold outline-none text-cream placeholder:text-cream/65 text-sm px-3 py-2 rounded-sm"
             onClick={(e) => e.stopPropagation()}
           />
           <button
@@ -141,7 +141,7 @@ export default function CommentThread({ eventId, submissionId }: Props) {
           </button>
         </div>
         {err && <p className="text-xs text-red-400">{err}</p>}
-        <p className="text-[10px] uppercase tracking-widest text-cream/35">
+        <p className="text-[10px] uppercase tracking-widest text-cream/65">
           {body.length}/280
         </p>
       </form>

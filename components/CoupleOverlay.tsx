@@ -2,6 +2,8 @@
 // names and wedding date into every photo. Reused on the live camera
 // view + the photo review screen so guests see exactly what gets saved.
 
+import { formatWeddingDate } from '@/lib/dates';
+
 type Props = {
   coupleNames?: string;
   weddingDate?: string;
@@ -9,22 +11,8 @@ type Props = {
   variant?: 'live' | 'review';
 };
 
-function formatDate(input?: string): string | null {
-  if (!input) return null;
-  try {
-    const d = new Date(input);
-    if (Number.isNaN(d.getTime())) return null;
-    const parts = d
-      .toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
-      .split('/');
-    return parts.join(' · ');
-  } catch {
-    return null;
-  }
-}
-
 export default function CoupleOverlay({ coupleNames, weddingDate, variant = 'live' }: Props) {
-  const date = formatDate(weddingDate);
+  const date = formatWeddingDate(weddingDate, 'dots');
   if (!coupleNames && !date) return null;
 
   return (

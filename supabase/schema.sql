@@ -4,8 +4,8 @@
 -- editor and press Run.
 --
 -- Security model:
---   * The anon key ships in the browser, so anon may only READ guest-safe
---     data and INSERT captures/comments. Every event mutation, all
+--   * The anon key ships in the browser, so anon may only READ approved
+--     submissions/comments and look up one event by slug. It cannot write. Every event mutation, all
 --     moderation, and the couple's/admin's view of pending rows go through
 --     Next.js server actions that use the service-role key after checking
 --     the admin cookie or the couple's manage_token.
@@ -112,76 +112,104 @@ create trigger submissions_force_approval
   before insert on public.submissions
   for each row execute function public.submissions_force_approval();
 
--- ── events policies ─────────────────────────────────────────────────────
+-- ── lock down the public (anon) key ────────────────────────────────────
+-- The anon key ships in the browser. It may only READ approved, open
+-- submissions and their comments, and look up ONE event by its exact slug.
+-- All writes (uploads, captures, comments, moderation, event admin) go
+-- through Next.js server actions using the service-role key, which check
+-- the event, tier, file type/size and a per-IP rate limit first
+-- (app/event/[slug]/actions.ts). Nobody can list the studio's clients.
+
+revoke all on public.events, public.submissions, public.comments from anon, authenticated;
+grant select on public.submissions, public.comments to anon, authenticated;
 
 drop policy if exists "events readable by anyone" on public.events;
-create policy "events readable by anyone" on public.events for select using (true);
+-- (no events policies: anon has no table privileges on events at all)
 
--- manage_token is the couple's portal credential and must NEVER reach the
--- browser: anon only gets the guest-safe columns.
-revoke select on public.events from anon, authenticated;
-grant select (
-  id, slug, couple_names, wedding_date, welcome_message,
-  tier, reveal_at, auto_approve, created_at
-) on public.events to anon, authenticated;
--- no insert/update/delete policies on events: server actions only.
+-- one event by exact slug, guest-safe columns only (never manage_token)
+create or replace function public.get_public_event(p_slug text)
+returns table (id uuid, slug text, couple_names text, wedding_date date, welcome_message text,
+               tier text, reveal_at timestamptz, auto_approve boolean, created_at timestamptz)
+language sql stable security definer set search_path = public
+as $fn$
+  select e.id, e.slug, e.couple_names, e.wedding_date, e.welcome_message, e.tier,
+         e.reveal_at, e.auto_approve, e.created_at
+  from public.events e where e.slug = p_slug limit 1;
+$fn$;
+revoke all on function public.get_public_event(text) from public;
+grant execute on function public.get_public_event(text) to anon, authenticated, service_role;
 
--- ── submissions policies ────────────────────────────────────────────────
+-- ── submissions ────────────────────────────────────────────────────────
 
 drop policy if exists "approved submissions readable by anyone" on public.submissions;
 create policy "approved submissions readable by anyone" on public.submissions
   for select using (approved and public.event_gallery_open(event_id));
-
 drop policy if exists "anon can insert submissions" on public.submissions;
-create policy "anon can insert submissions" on public.submissions
-  for insert with check (
-    media_type in ('photo', 'video', 'boomerang', 'voice')
-    and exists (select 1 from public.events e where e.id = event_id)
-    -- media must live in this project's bucket, inside this event's folder
-    and media_url like '%/storage/v1/object/public/submissions/' || event_id::text || '/%'
-    and media_url not like '%..%'
-    and char_length(media_url) <= 500
-    and char_length(filter_name) <= 40
-    and (guest_name is null or char_length(guest_name) <= 80)
-  );
--- no update/delete policies on submissions: moderation is server-side.
 
--- ── comments policies ───────────────────────────────────────────────────
+-- a stored file can only ever be recorded once (makes finalize retries safe)
+create unique index if not exists submissions_media_url_key on public.submissions(media_url);
 
--- comments are only visible / writable on submissions the guest can see
+-- ── comments ───────────────────────────────────────────────────────────
+
+-- comments are only visible on submissions the guest can see
 -- (the subquery runs under the submissions select policy above)
 drop policy if exists "comments readable by anyone" on public.comments;
 create policy "comments readable by anyone" on public.comments
   for select using (exists (select 1 from public.submissions s where s.id = submission_id));
-
 drop policy if exists "anon can insert comments" on public.comments;
-create policy "anon can insert comments" on public.comments
-  for insert with check (
-    char_length(body) between 1 and 280
-    and (guest_name is null or char_length(guest_name) <= 80)
-    and exists (
-      select 1 from public.submissions s
-      where s.id = submission_id and s.event_id = comments.event_id
-    )
-  );
+create index if not exists comments_event_created_idx on public.comments(event_id, created_at desc);
+
+-- ── flood guards (hard per-event caps, whatever path a write takes) ───────
+
+create or replace function public.submissions_flood_guard()
+returns trigger
+language plpgsql security definer set search_path = public
+as $fn$
+begin
+  if (select count(*) from public.submissions s
+      where s.event_id = new.event_id and s.created_at > now() - interval '1 minute') >= 120 then
+    raise exception 'rate limit: too many captures for this event right now' using errcode = 'P0001';
+  end if;
+  if (select count(*) from public.submissions s where s.event_id = new.event_id) >= 5000 then
+    raise exception 'limit: this event has reached its capture limit' using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$fn$;
+revoke execute on function public.submissions_flood_guard() from public, anon, authenticated;
+drop trigger if exists submissions_flood_guard on public.submissions;
+create trigger submissions_flood_guard before insert on public.submissions
+  for each row execute function public.submissions_flood_guard();
+
+create or replace function public.comments_flood_guard()
+returns trigger
+language plpgsql security definer set search_path = public
+as $fn$
+begin
+  if (select count(*) from public.comments c
+      where c.event_id = new.event_id and c.created_at > now() - interval '1 minute') >= 60 then
+    raise exception 'rate limit: too many comments for this event right now' using errcode = 'P0001';
+  end if;
+  if (select count(*) from public.comments c where c.submission_id = new.submission_id) >= 200 then
+    raise exception 'limit: too many comments on this photo' using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$fn$;
+revoke execute on function public.comments_flood_guard() from public, anon, authenticated;
+drop trigger if exists comments_flood_guard on public.comments;
+create trigger comments_flood_guard before insert on public.comments
+  for each row execute function public.comments_flood_guard();
 
 -- ── storage (bucket "submissions") ──────────────────────────────────────
 -- Create the bucket first in the dashboard (Storage → New bucket):
 --   name submissions · public ON · 30 MB limit · MIME types
 --   image/jpeg,image/png,image/webp,video/webm,video/mp4,audio/webm,audio/mp4
-
+--
+-- No anon INSERT policy: guests upload through one-time signed upload URLs
+-- that the server issues after its checks. No SELECT policy either: the
+-- bucket is public, so media loads by URL, but nobody can LIST folders.
 drop policy if exists "anon can upload to submissions bucket" on storage.objects;
-create policy "anon can upload to submissions bucket" on storage.objects
-  for insert with check (
-    bucket_id = 'submissions'
-    -- first folder must be a real event id
-    and (storage.foldername(name))[1] in (select id::text from public.events)
-  );
-
--- No SELECT policy on purpose: the bucket is public, so media loads by
--- URL without one. A select policy would let anyone LIST every event's
--- folder and bypass the reveal/expiry gate above. (Older installs had
--- one; this removes it.)
 drop policy if exists "anyone can read submissions bucket" on storage.objects;
 
 -- ── realtime ────────────────────────────────────────────────────────────

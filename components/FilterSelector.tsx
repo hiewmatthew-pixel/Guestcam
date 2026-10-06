@@ -12,18 +12,23 @@ export default function FilterSelector({ active, onSelect, allowed }: Props) {
   const visible = allowed ? FILTERS.filter((f) => allowed.includes(f.id)) : FILTERS;
   return (
     <div className="w-full">
-      <div className="flex gap-3 short:gap-2 overflow-x-auto no-scrollbar px-4 py-3 short:py-1.5">
+      <div
+        role="group"
+        aria-label="film filter"
+        className="flex gap-3 short:gap-2 overflow-x-auto no-scrollbar px-4 py-3 short:py-1.5"
+      >
         {visible.map((f) => {
           const isActive = f.id === active;
           return (
             <button
               key={f.id}
+              type="button"
               onClick={() => onSelect(f.id)}
               className={[
-                'shrink-0 rounded-full px-4 py-2 short:px-3 short:py-1.5 text-xs short:text-[10px] uppercase tracking-widest transition-all',
+                'shrink-0 min-h-11 short:min-h-9 rounded-full px-4 py-2 short:px-3 short:py-1.5 text-xs short:text-[10px] uppercase tracking-widest transition-all',
                 'border',
                 isActive
-                  ? 'bg-gold text-cream border-gold'
+                  ? 'bg-gold text-ink border-gold'
                   : 'bg-black/30 text-cream/85 border-cream/20 backdrop-blur-sm',
               ].join(' ')}
               aria-pressed={isActive}

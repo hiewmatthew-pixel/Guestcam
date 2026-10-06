@@ -2,6 +2,7 @@
 // crisp at any scale and lets us tint by passing currentColor.
 
 import type { StickerSetId } from './tiers';
+import { formatWeddingDate } from './dates';
 
 export type StickerId =
   | 'rings'
@@ -221,18 +222,13 @@ export function renderStickerSvg(
     </svg>`;
   }
   if (sticker.id === 'date-stamp' && event?.wedding_date) {
-    try {
-      const d = new Date(event.wedding_date);
-      const fmt = d
-        .toLocaleDateString(undefined, { month: '2-digit', day: '2-digit', year: '2-digit' })
-        .replace(/[\/.]/g, ' · ');
+    const fmt = formatWeddingDate(event.wedding_date, 'dots-short');
+    if (fmt) {
       return `<svg viewBox="0 0 240 50" xmlns="http://www.w3.org/2000/svg">
         <text x="120" y="34" text-anchor="middle"
               font-family="Cormorant Garamond, serif"
               font-weight="400" font-size="28" letter-spacing="6" fill="currentColor">${fmt}</text>
       </svg>`;
-    } catch {
-      /* fall through */
     }
   }
   return sticker.svg;

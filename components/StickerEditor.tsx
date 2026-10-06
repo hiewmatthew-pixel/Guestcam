@@ -306,7 +306,7 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
                     e.stopPropagation();
                     removeSticker(s.uid);
                   }}
-                  className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-cream text-ink text-xs grid place-items-center border border-ink/30"
+                  className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-cream text-ink text-xs grid place-items-center border border-ink/30 before:absolute before:-inset-2.5 before:content-['']"
                   aria-label="remove sticker"
                 >
                   ×
@@ -322,15 +322,18 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
         <button
           type="button"
           onClick={() => setTrayOpen((v) => !v)}
-          className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
+          aria-expanded={trayOpen}
+          className="min-h-11 text-[10px] uppercase tracking-widest"
         >
-          {trayOpen ? 'close stickers' : `add a sticker (${placed.length}/${MAX_STICKERS})`}
+          <span className="border-b border-gold pb-0.5">
+            {trayOpen ? 'close stickers' : `add a sticker (${placed.length}/${MAX_STICKERS})`}
+          </span>
         </button>
         {placed.length > 0 && (
           <button
             type="button"
             onClick={clearAll}
-            className="text-[10px] uppercase tracking-widest text-cream/60 hover:text-cream"
+            className="min-h-11 px-1 text-[10px] uppercase tracking-widest text-cream/65 hover:text-cream"
           >
             clear all
           </button>
@@ -342,7 +345,7 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
         onPick={addEmoji}
       />
 
-      <p className="mt-2 text-[10px] uppercase tracking-widest text-cream/40">
+      <p className="mt-2 text-[10px] uppercase tracking-widest text-cream/65">
         drag · pinch to resize · two fingers to rotate
       </p>
 
@@ -360,9 +363,10 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
                   onClick={() => addSticker(def)}
                   className="aspect-square bg-cream/95 rounded-sm grid place-items-center p-2 disabled:opacity-40"
                   title={def.label}
+                  aria-label={`add ${def.label} sticker`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt={def.label} className="max-w-full max-h-full" />
+                  <img src={url} alt="" className="max-w-full max-h-full" />
                 </button>
               );
             })}
@@ -385,7 +389,7 @@ function EmojiPicker({
     <div className="mt-3 flex items-stretch gap-2">
       <div
         className={[
-          'flex-1 flex items-center gap-2 bg-cream text-ink rounded-sm px-3 py-2 border border-gold/60',
+          'flex-1 flex items-center gap-2 bg-cream text-ink rounded-sm px-3 py-2 border border-gold/60 focus-within:ring-2 focus-within:ring-gold-deep focus-within:ring-offset-1',
           disabled ? 'opacity-40 pointer-events-none' : '',
         ].join(' ')}
       >
@@ -398,7 +402,7 @@ function EmojiPicker({
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
-          placeholder="tap and pick an emoji from your keyboard"
+          placeholder="pick an emoji from your keyboard"
           value={value}
           onChange={(e) => {
             const next = e.target.value;
@@ -409,7 +413,7 @@ function EmojiPicker({
               setValue('');
             }
           }}
-          className="flex-1 bg-transparent text-ink placeholder:text-ink/45 outline-none text-[12px] tracking-wide"
+          className="flex-1 min-w-0 bg-transparent text-ink placeholder:text-ink/70 focus:outline-none focus-visible:outline-none text-base tracking-wide"
           aria-label="emoji input"
         />
       </div>

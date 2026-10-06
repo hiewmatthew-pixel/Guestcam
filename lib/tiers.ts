@@ -1,4 +1,5 @@
 import type { FilterId } from './filters';
+import { parseWeddingDate } from './dates';
 
 export type TierId = 'glimpse' | 'signature' | 'studio';
 export type StickerSetId = 'essential' | 'full' | 'full-with-custom';
@@ -178,11 +179,13 @@ export function galleryExpiresAt(event: {
   tier: string;
   wedding_date: string;
 }): Date | null {
-  const base = new Date(event.wedding_date);
-  if (Number.isNaN(base.getTime())) return null;
+  // wedding_date is a calendar day — parse it as local, not UTC midnight
+  const base = parseWeddingDate(event.wedding_date);
+  if (!base) return null;
   const days = getTier(event.tier).features.galleryDays;
-  // expire at the END of the last day (start-of-wedding-day + days + 1)
+  // expire at the END of the last day (local start-of-wedding-day + days + 1)
   const expires = new Date(base);
+  expires.setHours(0, 0, 0, 0);
   expires.setDate(expires.getDate() + days + 1);
   return expires;
 }

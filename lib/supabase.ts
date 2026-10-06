@@ -56,12 +56,11 @@ export async function fetchPublicEventBySlug(
   sb: SupabaseClient,
   slug: string,
 ): Promise<EventRow | null> {
-  const { data } = await sb
-    .from('events')
-    .select(PUBLIC_EVENT_COLUMNS)
-    .eq('slug', slug)
-    .maybeSingle();
-  if (!data) return null;
+  // One event by its exact slug via a SECURITY DEFINER function. The anon
+  // key has no SELECT on events, so nobody can list the studio's clients
+  // and wedding dates; you have to already know the slug (from the QR).
+  const { data, error } = await sb.rpc('get_public_event', { p_slug: slug }).maybeSingle();
+  if (error || !data) return null;
   return toEventRow(data as PublicEvent);
 }
 

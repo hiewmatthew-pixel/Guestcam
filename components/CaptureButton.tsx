@@ -53,7 +53,12 @@ export default function CaptureButton({
   return (
     <button
       onClick={onTap}
-      aria-label={mode === 'photo' ? 'take photo' : recording ? 'stop video' : 'start video'}
+      type="button"
+      aria-label={
+        mode === 'photo'
+          ? 'take photo'
+          : `${recording ? 'stop' : 'start'} ${mode === 'boomerang' ? 'boomerang' : 'video'}`
+      }
       className="relative grid place-items-center select-none"
       style={{ width: ringSize, height: ringSize }}
     >

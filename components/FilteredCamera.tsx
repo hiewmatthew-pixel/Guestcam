@@ -1,5 +1,6 @@
 'use client';
 
+import { ensureCanvasFonts } from '@/lib/fonts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FilterId, VERTEX_SHADER, getFilter } from '@/lib/filters';
 import { drawCoupleOverlay } from '@/lib/overlay';
@@ -154,6 +155,11 @@ export default function FilteredCamera({
   const videoPlayingRef = useRef<boolean>(false);
 
   const [glReady, setGlReady] = useState(false);
+  // No WebGL (iOS Lockdown Mode, some older Androids): draw frames with a
+  // plain 2D canvas so guests still get a live preview and real photos,
+  // just without film filters. Before this, captures came out black.
+  const ctx2dRef = useRef<CanvasRenderingContext2D | null>(null);
+  const [filtersOff, setFiltersOff] = useState(false);
   const [error, setError] = useState<CameraError | null>(null);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [needsTap, setNeedsTap] = useState(false);
@@ -285,19 +291,37 @@ export default function FilteredCamera({
       (canvas.getContext('webgl', { preserveDrawingBuffer: true }) as WebGLRenderingContext | null) ||
       (canvas.getContext('experimental-webgl', { preserveDrawingBuffer: true }) as WebGLRenderingContext | null);
     if (!gl) {
-      setError({
-        kind: 'unsupported',
-        message: 'WebGL is not available on this device — filters are disabled.',
-      });
+      ctx2dRef.current = canvas.getContext('2d');
+      setFiltersOff(true);
       onWebGLUnavailable?.();
       return;
     }
     glRef.current = gl;
+
+    // the GPU can drop the context (screen lock, memory pressure): rebuild
+    // everything on restore instead of leaving a black viewfinder
+    const onLost = (e: Event) => e.preventDefault();
+    const onRestored = () => {
+      programRef.current = null;
+      textureRef.current = null;
+      posBufRef.current = null;
+      texBufRef.current = null;
+      installFilter(currentFilterRef.current);
+    };
+    canvas.addEventListener('webglcontextlost', onLost);
+    canvas.addEventListener('webglcontextrestored', onRestored);
     installFilter(filter);
     setGlReady(true);
     // capture initial filter via ref so the first render is correct
     currentFilterRef.current = filter;
     startedAtRef.current = performance.now();
+    // load the real serif now so the first frames of a couple-name
+    // overlay recording aren't drawn in the Times fallback
+    void ensureCanvasFonts();
+    return () => {
+      canvas.removeEventListener('webglcontextlost', onLost);
+      canvas.removeEventListener('webglcontextrestored', onRestored);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -339,8 +363,8 @@ export default function FilteredCamera({
           audio: false,
           video: {
             facingMode: facing,
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
           },
         });
         if (cancelled) {
@@ -407,8 +431,19 @@ export default function FilteredCamera({
       const video = videoRef.current;
       const program = programRef.current;
       const tex = textureRef.current;
+      const ctx2d = ctx2dRef.current;
 
-      if (gl && canvas && video && program && tex && video.readyState >= 2) {
+      if (ctx2d && canvas && video && video.readyState >= 2 && video.videoWidth) {
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        }
+        ctx2d.drawImage(video, 0, 0, canvas.width, canvas.height);
+        if (!videoPlayingRef.current) {
+          videoPlayingRef.current = true;
+          setVideoPlaying(true);
+        }
+      } else if (gl && canvas && video && program && tex && video.readyState >= 2) {
         const vw = video.videoWidth;
         const vh = video.videoHeight;
         if (vw && vh) {
@@ -681,6 +716,15 @@ export default function FilteredCamera({
       {/* film grain overlay */}
       <div className="grain absolute inset-0 pointer-events-none" />
 
+      {filtersOff && !error && videoPlaying && (
+        <p
+          role="status"
+          className="absolute bottom-2 inset-x-0 text-center text-[11px] text-cream/85 pointer-events-none"
+        >
+          film filters aren’t supported on this phone, so photos are saved as shot
+        </p>
+      )}
+
       {/* video-playback gesture required (rare on iOS in iframes) */}
       {!error && needsTap && (
         <button
@@ -723,12 +767,27 @@ export default function FilteredCamera({
               </button>
             )}
 
+            {/* never a dead end: guests can still share a photo from their library */}
+            <label className="mt-6 inline-flex min-h-11 cursor-pointer items-center bg-gold text-ink px-5 py-3 text-xs uppercase tracking-widest focus-within:outline focus-within:outline-2 focus-within:outline-cream">
+              upload a photo instead
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) onPhotoCaptured(file);
+                }}
+              />
+            </label>
+
             {error.kind !== 'iframe-blocked' && (
               <button
                 onClick={() => window.location.reload()}
-                className="mt-6 ml-2 border border-cream/40 text-cream px-5 py-3 text-xs uppercase tracking-widest"
+                className="mt-3 block mx-auto min-h-11 border border-cream/40 text-cream px-5 py-3 text-xs uppercase tracking-widest"
               >
-                try again
+                try the camera again
               </button>
             )}
           </div>

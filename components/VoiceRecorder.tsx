@@ -177,7 +177,7 @@ export default function VoiceRecorder({ guestName, onSubmit, onCancel }: Props) 
   return (
     <div className="bg-cream text-ink rounded-sm border border-warm-gray-light p-6">
       <div className="flex items-center justify-between mb-4">
-        <p className="text-[10px] uppercase tracking-[0.3em] text-ink/60">
+        <p className="text-[10px] uppercase tracking-[0.3em] text-ink/70">
           leave a voice note {guestName && <span className="lowercase">— {guestName}</span>}
         </p>
         <button
@@ -186,14 +186,15 @@ export default function VoiceRecorder({ guestName, onSubmit, onCancel }: Props) 
             stopAllInternal();
             onCancel();
           }}
-          className="text-[10px] uppercase tracking-widest text-ink/45 hover:text-ink"
+          aria-label="close voice note"
+          className="min-h-11 min-w-11 -mr-2 px-2 text-[10px] uppercase tracking-widest text-ink/70 hover:text-ink"
         >
           close
         </button>
       </div>
 
       {error && (
-        <p className="mb-4 text-xs text-red-700">{error}</p>
+        <p role="alert" className="mb-4 text-xs text-red-700">{error}</p>
       )}
 
       {phase === 'idle' && (
@@ -201,9 +202,9 @@ export default function VoiceRecorder({ guestName, onSubmit, onCancel }: Props) 
           <p className="font-serif italic text-2xl text-ink leading-tight">
             tap to record a short message
             <br />
-            <span className="text-ink/60">for the couple</span>
+            <span className="text-ink/70">for the couple</span>
           </p>
-          <p className="mt-3 text-[11px] uppercase tracking-widest text-ink/45">
+          <p className="mt-3 text-[11px] uppercase tracking-widest text-ink/70">
             up to one minute
           </p>
           <button
@@ -222,10 +223,10 @@ export default function VoiceRecorder({ guestName, onSubmit, onCancel }: Props) 
           <RecordingRing progress={progress} />
           <p className="mt-6 font-serif italic text-3xl tabular-nums">
             {formatSeconds(elapsed)}
-            <span className="text-ink/40"> / 1:00</span>
+            <span className="text-ink/70"> / 1:00</span>
           </p>
-          <p className="mt-2 text-[11px] uppercase tracking-widest text-red-600">
-            ● recording
+          <p role="status" className="mt-2 text-[11px] uppercase tracking-widest text-red-700">
+            <span aria-hidden>● </span>recording
           </p>
           <button
             type="button"
@@ -245,6 +246,7 @@ export default function VoiceRecorder({ guestName, onSubmit, onCancel }: Props) 
           </p>
           <audio
             controls
+            aria-label="your voice note preview"
             src={previewUrl}
             className="mt-4 w-full"
           />
@@ -253,7 +255,7 @@ export default function VoiceRecorder({ guestName, onSubmit, onCancel }: Props) 
               type="button"
               onClick={discard}
               disabled={submitting}
-              className="text-[10px] uppercase tracking-widest text-ink/55 hover:text-ink px-4 py-2 disabled:opacity-60"
+              className="min-h-11 text-[10px] uppercase tracking-widest text-ink/70 hover:text-ink px-4 py-2 disabled:opacity-60"
             >
               re-record
             </button>
@@ -261,7 +263,7 @@ export default function VoiceRecorder({ guestName, onSubmit, onCancel }: Props) 
               type="button"
               onClick={submit}
               disabled={submitting}
-              className="bg-gold text-ink px-6 py-3 rounded-sm text-[10px] uppercase tracking-widest disabled:opacity-60"
+              className="min-h-11 bg-gold text-ink px-6 py-3 rounded-sm text-[10px] uppercase tracking-widest disabled:opacity-60"
             >
               {submitting ? 'sending…' : 'send to the couple'}
             </button>
@@ -279,7 +281,7 @@ function RecordingRing({ progress }: { progress: number }) {
   const c = 2 * Math.PI * r;
   const dash = c * progress;
   return (
-    <svg width={size} height={size} className="mx-auto block">
+    <svg width={size} height={size} className="mx-auto block" aria-hidden="true">
       <circle
         cx={size / 2}
         cy={size / 2}

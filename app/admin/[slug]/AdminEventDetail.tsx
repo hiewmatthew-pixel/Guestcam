@@ -22,6 +22,7 @@ import {
 } from '@/lib/supabase';
 import { formatPriceCAD, getTier } from '@/lib/tiers';
 import { safeFilenamePart } from '@/lib/validate';
+import { formatWeddingDate } from '@/lib/dates';
 import {
   adminGetEventBySlugAction,
   adminListSubmissionsAction,
@@ -165,15 +166,19 @@ export default function AdminEventDetail({ slug }: Props) {
   }
 
   if (loading) {
-    return <p className="text-center font-serif italic text-ink/60">loading…</p>;
+    return (
+      <p role="status" className="text-center font-serif italic text-ink/70">
+        loading…
+      </p>
+    );
   }
 
   if (!event) {
     return (
       <div className="text-center max-w-md mx-auto">
         <p className="font-serif italic text-2xl">event not found</p>
-        <Link href="/admin" className="mt-6 inline-block text-[10px] uppercase tracking-widest border-b border-gold">
-          back to events
+        <Link href="/admin" className="mt-6 inline-flex items-center min-h-11 text-[10px] uppercase tracking-widest">
+          <span className="border-b border-gold">back to events</span>
         </Link>
       </div>
     );
@@ -181,17 +186,19 @@ export default function AdminEventDetail({ slug }: Props) {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <Link href="/admin" className="text-[10px] uppercase tracking-widest text-ink/60">
-        ← all events
+      <Link href="/admin" className="inline-flex items-center min-h-11 text-[10px] uppercase tracking-widest text-ink/70 hover:text-ink">
+        <span aria-hidden>←&nbsp;</span>all events
       </Link>
 
       <header className="mt-4">
-        <p className="text-[10px] uppercase tracking-widest text-ink/50">{event.wedding_date}</p>
+        <p className="text-[10px] uppercase tracking-widest text-ink/70">
+          {formatWeddingDate(event.wedding_date, 'weekday-long') ?? event.wedding_date}
+        </p>
         <h1 className="font-serif italic text-4xl mt-1">{event.couple_names}</h1>
         {event.welcome_message && (
-          <p className="mt-3 text-ink/60 max-w-xl">{event.welcome_message}</p>
+          <p className="mt-3 text-ink/70 max-w-xl">{event.welcome_message}</p>
         )}
-        <p className="mt-4 inline-flex items-center gap-2 text-[10px] uppercase tracking-widest border border-gold text-gold px-2 py-1 rounded-sm">
+        <p className="mt-4 inline-flex items-center gap-2 text-[10px] uppercase tracking-widest border border-gold text-gold-deep px-2 py-1 rounded-sm">
           {tier.label} tier · {formatPriceCAD(tier.price)} ·{' '}
           {tier.features.allowVideo ? 'photo + video' : 'photo only'} ·{' '}
           {tier.features.filters.length >= 6
@@ -202,7 +209,7 @@ export default function AdminEventDetail({ slug }: Props) {
 
       <div className="mt-10 grid md:grid-cols-2 gap-10 items-start">
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-4">
+          <p className="text-[10px] uppercase tracking-widest text-ink/70 mb-4">
             scan to capture
           </p>
           <QRCode
@@ -221,19 +228,20 @@ export default function AdminEventDetail({ slug }: Props) {
         </div>
 
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-ink/50">submissions</p>
+          <p className="text-[10px] uppercase tracking-widest text-ink/70">submissions</p>
           <p className="font-serif italic text-3xl mt-1">{items.length}</p>
           <div className="mt-6 flex flex-col gap-3">
             <Link
               href={`/event/${slug}/gallery`}
-              className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5 w-fit"
+              className="inline-flex items-center min-h-11 text-[10px] uppercase tracking-widest w-fit"
             >
-              open live gallery →
+              <span className="border-b border-gold pb-0.5">open live gallery →</span>
             </Link>
             <button
               onClick={handleDownloadZip}
               disabled={downloading || items.length === 0}
-              className="bg-ink text-cream py-3 px-5 text-xs uppercase tracking-widest disabled:opacity-50 w-fit"
+              type="button"
+              className="min-h-11 bg-ink text-cream py-3 px-5 text-xs uppercase tracking-widest disabled:opacity-50 w-fit"
             >
               {downloading ? 'zipping…' : 'download all (zip)'}
             </button>
@@ -245,7 +253,7 @@ export default function AdminEventDetail({ slug }: Props) {
       <section className="mt-16 border-t border-warm-gray-light pt-10">
         <header className="flex items-baseline justify-between gap-4 flex-wrap">
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-ink/50">
+            <p className="text-[10px] uppercase tracking-widest text-ink/70">
               share with the couple
             </p>
             <h2 className="font-serif italic text-2xl mt-1">two links, two purposes</h2>
@@ -254,16 +262,16 @@ export default function AdminEventDetail({ slug }: Props) {
             href={portalUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
+            className="inline-flex items-center min-h-11 text-[10px] uppercase tracking-widest"
           >
-            preview the couple’s view →
+            <span className="border-b border-gold pb-0.5">preview the couple’s view →</span>
           </a>
         </header>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           {/* Guest capture link (public) */}
           <div className="border border-warm-gray-light p-5 rounded-sm">
-            <p className="text-[10px] uppercase tracking-widest text-ink/55">
+            <p className="text-[10px] uppercase tracking-widest text-ink/70">
               for guests (public)
             </p>
             <p className="font-serif italic text-lg text-ink mt-1">
@@ -273,16 +281,19 @@ export default function AdminEventDetail({ slug }: Props) {
               {captureUrl}
             </p>
             <button
+              type="button"
               onClick={() => copy('capture', captureUrl)}
-              className="mt-3 text-[10px] uppercase tracking-widest border-b border-ink/40 pb-0.5"
+              className="mt-1 min-h-11 text-[10px] uppercase tracking-widest"
             >
-              {copied === 'capture' ? 'copied ✦' : 'copy link'}
+              <span className="border-b border-ink/40 pb-0.5">
+                {copied === 'capture' ? 'copied ✦' : 'copy guest link'}
+              </span>
             </button>
           </div>
 
           {/* Couple's portal (private) */}
           <div className="border border-gold/60 bg-gold/5 p-5 rounded-sm">
-            <p className="text-[10px] uppercase tracking-widest text-gold">
+            <p className="text-[10px] uppercase tracking-widest text-gold-deep">
               for the couple (private)
             </p>
             <p className="font-serif italic text-lg text-ink mt-1">
@@ -293,19 +304,23 @@ export default function AdminEventDetail({ slug }: Props) {
             </p>
             <div className="mt-3 flex items-center gap-4 flex-wrap">
               <button
+                type="button"
                 onClick={() => copy('portal', portalUrl)}
-                className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
+                className="min-h-11 text-[10px] uppercase tracking-widest"
               >
-                {copied === 'portal' ? 'copied ✦' : 'copy link'}
+                <span className="border-b border-gold pb-0.5">
+                  {copied === 'portal' ? 'copied ✦' : 'copy couple link'}
+                </span>
               </button>
               <button
+                type="button"
                 onClick={handleRotateToken}
-                className="text-[10px] uppercase tracking-widest text-ink/50 hover:text-ink"
+                className="min-h-11 text-[10px] uppercase tracking-widest text-ink/70 hover:text-ink"
               >
                 rotate link
               </button>
             </div>
-            <p className="mt-3 text-[11px] text-ink/55 leading-relaxed">
+            <p className="mt-3 text-[11px] text-ink/70 leading-relaxed">
               Paste this into your reply email or text. Anyone with this link can
               view and download — share it carefully.
             </p>
@@ -313,8 +328,12 @@ export default function AdminEventDetail({ slug }: Props) {
         </div>
       </section>
 
+      <p role="status" className="sr-only">
+        {copied ? 'link copied to clipboard' : ''}
+      </p>
+
       <div className="mt-16">
-        <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-6 text-center">
+        <p className="text-[10px] uppercase tracking-widest text-ink/70 mb-6 text-center">
           recent moments
         </p>
         <Gallery

@@ -6,6 +6,9 @@
 // same layout geometry later by compositing per-frame onto a canvas that
 // MediaRecorder captures.
 
+import { formatWeddingDate } from './dates';
+import { ensureCanvasFonts, serifFont } from './fonts';
+
 export type FrameId = 'strip' | 'filmstrip' | 'polaroid';
 
 export type FrameDef = {
@@ -32,16 +35,7 @@ const INK = '#1A1A1A';
 type EventMeta = { couple_names?: string; wedding_date?: string };
 
 function formatDate(input?: string): string | null {
-  if (!input) return null;
-  try {
-    const d = new Date(input);
-    if (Number.isNaN(d.getTime())) return null;
-    return d
-      .toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })
-      .replace(/\//g, ' · ');
-  } catch {
-    return null;
-  }
+  return formatWeddingDate(input, 'dots-short');
 }
 
 // draw an image cropped to fill a target rect (object-fit: cover)
@@ -91,7 +85,8 @@ export async function composeFrame(
   blobs: Blob[],
   event?: EventMeta,
 ): Promise<Blob> {
-  const images = await loadImages(blobs);
+  // canvas can't use the hashed next/font family until it's loaded
+  const [images] = await Promise.all([loadImages(blobs), ensureCanvasFonts()]);
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('2D canvas unavailable');
@@ -152,12 +147,12 @@ function renderStrip(
   const date = formatDate(event?.wedding_date);
   if (names) {
     ctx.fillStyle = INK;
-    ctx.font = 'italic 500 46px "Cormorant Garamond", "Times New Roman", serif';
+    ctx.font = serifFont(46, { italic: true, weight: 500 });
     ctx.fillText(names, cx, footerTop + 70);
   }
   if (date) {
     ctx.fillStyle = GOLD;
-    ctx.font = '400 20px "Cormorant Garamond", serif';
+    ctx.font = serifFont(20);
     ctx.fillText(spaced(date), cx, footerTop + 106);
   }
 }
@@ -216,12 +211,12 @@ function renderFilmstrip(
   const date = formatDate(event?.wedding_date);
   if (names) {
     ctx.fillStyle = CREAM;
-    ctx.font = 'italic 500 44px "Cormorant Garamond", "Times New Roman", serif';
+    ctx.font = serifFont(44, { italic: true, weight: 500 });
     ctx.fillText(names, cx, footerTop + 64);
   }
   if (date) {
     ctx.fillStyle = GOLD;
-    ctx.font = '400 19px "Cormorant Garamond", serif';
+    ctx.font = serifFont(19);
     ctx.fillText(spaced(date), cx, footerTop + 98);
   }
 }
@@ -287,12 +282,12 @@ function renderPolaroid(
   const date = formatDate(event?.wedding_date);
   if (names) {
     ctx.fillStyle = INK;
-    ctx.font = 'italic 500 52px "Cormorant Garamond", "Times New Roman", serif';
+    ctx.font = serifFont(52, { italic: true, weight: 500 });
     ctx.fillText(names, cx, H - 96);
   }
   if (date) {
     ctx.fillStyle = GOLD;
-    ctx.font = '400 22px "Cormorant Garamond", serif';
+    ctx.font = serifFont(22);
     ctx.fillText(spaced(date), cx, H - 56);
   }
 }

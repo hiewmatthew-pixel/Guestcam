@@ -2,6 +2,7 @@
 // the user toggles demo mode. Media blobs are kept as object URLs in memory
 // plus a base64 copy in localStorage so they survive a refresh.
 
+import { todayYmd } from './dates';
 import type { EventRow, SubmissionRow } from './supabase';
 import { generateManageToken } from './tokens';
 
@@ -196,7 +197,7 @@ export function makeDemoEvent(welcome_message: string | null = null): EventRow {
     id: DEMO_EVENT_ID,
     slug: 'demo',
     couple_names: 'Sarah & James',
-    wedding_date: now.toISOString().slice(0, 10),
+    wedding_date: todayYmd(),
     welcome_message,
     tier: 'signature',
     manage_token: 'demo-portal',

@@ -12,8 +12,10 @@ import CoupleOverlay from '@/components/CoupleOverlay';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import { FILTERS, FilterId } from '@/lib/filters';
 import { extForBlob } from '@/lib/media';
-import { discardOrphanUploadAction } from './actions';
-import { addSubmission, getEventBySlug, isDemoMode, setDemoMode } from '@/lib/demo-store';
+import UploadQueueStatus from '@/components/UploadQueueStatus';
+import { enqueueCapture } from '@/lib/upload-queue';
+import { readStoredGuestName, storeGuestName } from '@/lib/comments';
+import { addSubmission, getEventBySlug } from '@/lib/demo-store';
 import { DEMO_EVENT_ID, makeDemoEvent } from '@/lib/demo-store';
 import {
   fetchPublicEventBySlug,
@@ -22,9 +24,9 @@ import {
   type EventRow,
 } from '@/lib/supabase';
 import { getTier } from '@/lib/tiers';
+import { formatWeddingDate } from '@/lib/dates';
 import { cleanString, LIMITS } from '@/lib/validate';
 import { compositePhoto } from '@/lib/composite';
-import { uploadFileWithProgress } from '@/lib/upload';
 import { FRAMES, getFrame, composeFrame, type FrameId } from '@/lib/frames';
 
 type Stage = 'welcome' | 'capture' | 'review';
@@ -61,15 +63,15 @@ export default function EventCapturePage() {
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [stickers, setStickers] = useState<PlacedSticker[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  // 0..1 while an upload is in flight, null otherwise
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  // inline error on the review screen (replaces browser alert() popups)
+  const [sendError, setSendError] = useState<string | null>(null);
   // shown once if the mic is blocked when recording video
   const [micNotice, setMicNotice] = useState(false);
   const [submittedOk, setSubmittedOk] = useState(false);
   const [savingLocal, setSavingLocal] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [voiceSent, setVoiceSent] = useState(false);
-  const [demo, setDemo] = useState<boolean>(true);
+  const [demo, setDemo] = useState<boolean>(false);
   const [inIframe, setInIframe] = useState(false);
 
   useEffect(() => {
@@ -80,11 +82,16 @@ export default function EventCapturePage() {
     }
   }, []);
 
-  // demo flag init
+  // remember the guest's name across camera reloads / revisits
   useEffect(() => {
-    const d = !isSupabaseConfigured || isDemoMode();
-    setDemo(d);
+    const saved = readStoredGuestName();
+    if (saved) setGuestName(saved);
   }, []);
+
+  // `demo` = this event lives only in this browser (the /event/demo
+  // sandbox, or a studio test event made in admin demo mode). It is decided
+  // by where the event was found, never by a sticky browser flag, so a real
+  // guest at a real event can't end up saving photos only to their phone.
 
   // load event (demo store first, then Supabase)
   useEffect(() => {
@@ -92,31 +99,32 @@ export default function EventCapturePage() {
     async function load() {
       // demo special-case: /event/demo always works
       if (slug === 'demo') {
-        const demoEvent = makeDemoEvent();
         if (!cancelled) {
-          setEvent(demoEvent);
+          setDemo(true);
+          setEvent(makeDemoEvent());
           setLoading(false);
         }
         return;
       }
 
-      const local = getEventBySlug(slug);
-      if (local) {
-        if (!cancelled) {
-          setEvent(local);
-          setLoading(false);
-        }
-        return;
-      }
-      if (isSupabaseConfigured && !isDemoMode()) {
-        const ev = await fetchPublicEventBySlug(getSupabase()!, slug);
-        if (!cancelled) {
+      // real events first: a real slug always saves to the server
+      if (isSupabaseConfigured) {
+        const ev = await fetchPublicEventBySlug(getSupabase()!, slug).catch(() => null);
+        if (cancelled) return;
+        if (ev) {
+          setDemo(false);
           setEvent(ev);
           setLoading(false);
+          return;
         }
-        return;
       }
-      if (!cancelled) setLoading(false);
+
+      const local = getEventBySlug(slug);
+      if (!cancelled) {
+        setDemo(!!local);
+        setEvent(local);
+        setLoading(false);
+      }
     }
     load();
     return () => {
@@ -128,18 +136,10 @@ export default function EventCapturePage() {
   // generic effect cleanup here would revoke the URL on every change
   // and (worse) on the StrictMode double-mount of the just-set URL.
 
-  const dateLabel = useMemo(() => {
-    if (!event) return '';
-    try {
-      return new Date(event.wedding_date).toLocaleDateString(undefined, {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      });
-    } catch {
-      return event.wedding_date;
-    }
-  }, [event]);
+  const dateLabel = useMemo(
+    () => (event ? formatWeddingDate(event.wedding_date, 'long') ?? event.wedding_date : ''),
+    [event],
+  );
 
   const tier = useMemo(() => getTier(event?.tier), [event]);
 
@@ -303,7 +303,6 @@ export default function EventCapturePage() {
     ext: string;
     contentType: string;
     guestName: string | null;
-    showProgress?: boolean;
   }) {
     if (!event) return;
     const approved = event.auto_approve !== false;
@@ -321,36 +320,17 @@ export default function EventCapturePage() {
       return;
     }
 
-    const sb = getSupabase()!;
-    const path = `${event.id}/${Date.now()}-${crypto.randomUUID()}.${args.ext}`;
-
-    if (args.showProgress) setUploadProgress(0);
-    let mediaUrl: string;
-    try {
-      mediaUrl = await uploadFileWithProgress({
-        bucket: 'submissions',
-        path,
-        blob: args.blob,
-        contentType: args.contentType,
-        onProgress: args.showProgress ? (f) => setUploadProgress(f) : undefined,
-      });
-    } finally {
-      if (args.showProgress) setUploadProgress(null);
-    }
-
-    const insert = await sb.from('submissions').insert({
-      event_id: event.id,
-      media_url: mediaUrl,
-      media_type: args.mediaType,
-      filter_name: args.filterName,
-      guest_name: args.guestName,
-      approved,
+    // Saved to the on-device queue first, then sent in the background with
+    // retries, so a weak signal or a locked phone never loses a capture.
+    await enqueueCapture({
+      slug,
+      mediaType: args.mediaType,
+      blob: args.blob,
+      contentType: args.contentType,
+      ext: args.ext,
+      filterName: args.filterName,
+      guestName: args.guestName,
     });
-    if (insert.error) {
-      // roll back the orphaned storage object, then surface the error
-      discardOrphanUploadAction(path).catch(() => {});
-      throw insert.error;
-    }
   }
 
   async function submitVoice(blob: Blob, _durationSec: number) {
@@ -379,12 +359,13 @@ export default function EventCapturePage() {
     const ALLOWED = pendingType === 'photo'
       ? ['image/jpeg', 'image/png', 'image/webp']
       : ['video/webm', 'video/mp4'];
+    setSendError(null);
     if (pendingBlob.size > MAX_BYTES) {
-      alert('That file is too large. Try a shorter clip or a single photo.');
+      setSendError('That file is too large. Try a shorter clip or a single photo.');
       return;
     }
     if (pendingBlob.type && !ALLOWED.some((a) => pendingBlob.type.startsWith(a))) {
-      alert('That file type is not supported.');
+      setSendError('That file type is not supported.');
       return;
     }
 
@@ -422,7 +403,6 @@ export default function EventCapturePage() {
         contentType:
           uploadBlob.type || (pendingType === 'photo' ? 'image/jpeg' : 'video/webm'),
         guestName: cleanGuest,
-        showProgress: pendingType !== 'photo', // videos/boomerangs are the big ones
       });
       setSubmittedOk(true);
       setPendingBlob(null);
@@ -431,16 +411,19 @@ export default function EventCapturePage() {
       setTimeout(() => {
         setSubmittedOk(false);
         setStage('capture');
-      }, 1800);
+      }, 2600);
     } catch (e: any) {
-      alert(e?.message || 'Could not save your capture. Please try again.');
+      setSendError(
+        (e?.message || 'Could not save your capture.') +
+          ' Try again, or save it to your phone.',
+      );
     } finally {
       setSubmitting(false);
-      setUploadProgress(null);
     }
   }
 
   function retake() {
+    setSendError(null);
     setPendingBlob(null);
     if (pendingUrl) URL.revokeObjectURL(pendingUrl);
     setPendingUrl(null);
@@ -452,7 +435,7 @@ export default function EventCapturePage() {
   if (loading) {
     return (
       <main className="min-h-screen grid place-items-center">
-        <p className="font-serif italic text-ink/60">loading…</p>
+        <p className="font-serif italic text-ink/70">loading…</p>
       </main>
     );
   }
@@ -462,7 +445,7 @@ export default function EventCapturePage() {
       <main className="min-h-screen grid place-items-center px-6">
         <div className="text-center max-w-sm">
           <h1 className="font-serif italic text-3xl">event not found</h1>
-          <p className="mt-3 text-ink/60">
+          <p className="mt-3 text-ink/70">
             Double-check the link or QR code from your hosts.
           </p>
           <Link
@@ -480,19 +463,19 @@ export default function EventCapturePage() {
   if (stage === 'welcome') {
     return (
       <main className="min-h-screen min-h-dvh flex flex-col pt-safe pb-safe">
+        {!demo && <UploadQueueStatus tone="light" />}
         <header className="px-6 pt-8 short:pt-3 flex items-center gap-3">
           <Link
             href="/"
-            aria-label="back to home"
             className="flex items-center gap-3 group"
           >
             <Logo className="h-5 w-8 text-ink" />
-            <span className="text-[11px] tracking-widest uppercase text-ink/60 group-hover:text-ink transition-colors">
+            <span className="text-[11px] tracking-widest uppercase text-ink/70 group-hover:text-ink transition-colors">
               GlanceCam
             </span>
           </Link>
           {slug === 'demo' && (
-            <span className="ml-auto text-[10px] uppercase tracking-widest text-gold">
+            <span className="ml-auto text-[10px] uppercase tracking-widest text-gold-deep">
               demo mode
             </span>
           )}
@@ -500,7 +483,7 @@ export default function EventCapturePage() {
 
         <section className="flex-1 grid place-items-center px-6 py-12 short:py-4">
           <div className="max-w-md w-full text-center animate-fade-up">
-            <p className="text-[11px] tracking-widest uppercase text-ink/50">
+            <p className="text-[11px] tracking-widest uppercase text-ink/70">
               {dateLabel}
             </p>
             <h1 className="mt-4 short:mt-2 font-serif italic text-4xl short:text-3xl sm:text-5xl leading-tight">
@@ -510,31 +493,39 @@ export default function EventCapturePage() {
               invited you to capture their day
             </p>
             {event.welcome_message && (
-              <p className="mt-6 text-ink/60 leading-relaxed">
+              <p className="mt-6 text-ink/70 leading-relaxed">
                 {event.welcome_message}
               </p>
             )}
 
             <div className="mt-10 short:mt-5 text-left">
-              <label className="block text-[10px] uppercase tracking-widest text-ink/60 mb-2">
-                your name <span className="text-ink/40 lowercase">(optional)</span>
+              <label htmlFor="guest-name" className="block text-[10px] uppercase tracking-widest text-ink/70 mb-2">
+                your name <span className="text-ink/70 lowercase">(optional)</span>
               </label>
               <input
+                id="guest-name"
+                autoComplete="name"
                 value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
+                onChange={(e) => {
+                  setGuestName(e.target.value);
+                  storeGuestName(e.target.value);
+                }}
                 maxLength={LIMITS.GUEST_NAME}
                 placeholder="how should we credit you?"
-                className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2 placeholder:text-ink/30"
+                className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold-deep py-2 placeholder:text-ink/70"
               />
             </div>
 
-            <p className="mt-10 short:mt-4 text-xs text-ink/50 leading-relaxed">
-              Your captures will be shared with the couple.
+            <p className="mt-10 short:mt-4 text-xs text-ink/70 leading-relaxed">
+              Your photos go to {event.couple_names}
+              {event.auto_approve === false
+                ? ', who approve them before they appear in the shared gallery.'
+                : ' and appear in the shared gallery for everyone at the wedding.'}
             </p>
 
             {inIframe && (
               <div className="mt-8 border border-gold/40 bg-gold/10 p-4 text-left rounded-sm">
-                <p className="text-[10px] uppercase tracking-widest text-gold mb-2">
+                <p className="text-[10px] uppercase tracking-widest text-gold-deep mb-2">
                   preview notice
                 </p>
                 <p className="text-xs text-ink/75 leading-relaxed">
@@ -568,7 +559,7 @@ export default function EventCapturePage() {
               </button>
             )}
             {voiceSent && (
-              <p className="mt-4 font-serif italic text-xl text-gold-soft">
+              <p role="status" className="mt-4 font-serif italic text-xl text-gold-deep">
                 your voice note is on its way ✦
               </p>
             )}
@@ -582,21 +573,10 @@ export default function EventCapturePage() {
               </div>
             )}
 
-            <div className="mt-6 flex items-center justify-center gap-4 text-[10px] uppercase tracking-widest text-ink/40">
-              <Link href={`/event/${slug}/gallery`} className="hover:text-ink/70">
+            <div className="mt-6 flex items-center justify-center gap-4 text-[11px] uppercase tracking-widest text-ink/70">
+              <Link href={`/event/${slug}/gallery`} className="inline-flex min-h-11 items-center hover:text-ink">
                 see the gallery
               </Link>
-              <span>·</span>
-              <button
-                onClick={() => {
-                  const next = !demo;
-                  setDemo(next);
-                  setDemoMode(next);
-                }}
-                className="hover:text-ink/70"
-              >
-                demo mode: {demo ? 'on' : 'off'}
-              </button>
             </div>
           </div>
         </section>
@@ -664,36 +644,32 @@ export default function EventCapturePage() {
 
         <div className="px-6 pb-6 pt-3 short:sticky short:bottom-0 short:z-10 short:bg-ink short:pb-2 short:pt-2 short:border-t short:border-cream/10">
           {submittedOk ? (
-            <p className="text-center font-serif italic text-2xl text-gold-soft">
-              Your moment is saved ✦
-            </p>
+            <div role="status" aria-live="polite" className="text-center">
+              <p className="font-serif italic text-2xl text-gold-soft">Sent to the couple ✦</p>
+              <p className="mt-1 text-xs text-cream/75">
+                {event.auto_approve === false
+                  ? 'It will appear in the gallery once the couple approves it.'
+                  : 'It will appear in the gallery and on the screen shortly.'}
+              </p>
+            </div>
           ) : (
             <>
+              {sendError && (
+                <p role="alert" className="mb-3 rounded-sm border border-cream/25 bg-cream/10 px-3 py-2 text-sm text-cream">
+                  {sendError}
+                </p>
+              )}
               <button
                 onClick={submitPending}
                 disabled={submitting}
                 className="relative w-full overflow-hidden bg-gold text-ink py-4 rounded-sm text-xs uppercase tracking-widest disabled:opacity-60"
               >
-                {/* upload progress fill (videos/boomerangs) */}
-                {uploadProgress !== null && (
-                  <span
-                    aria-hidden
-                    className="absolute inset-y-0 left-0 bg-ink/15 transition-[width] duration-150"
-                    style={{ width: `${Math.round(uploadProgress * 100)}%` }}
-                  />
-                )}
-                <span className="relative">
-                  {submitting
-                    ? uploadProgress !== null
-                      ? `sending… ${Math.round(uploadProgress * 100)}%`
-                      : 'sending…'
-                    : 'send to the couple'}
-                </span>
+                {submitting ? 'saving…' : sendError ? 'try again' : 'send to the couple'}
               </button>
               <button
                 onClick={saveToPhone}
                 disabled={submitting || savingLocal}
-                className="mt-3 w-full text-[10px] uppercase tracking-widest text-cream/70 hover:text-cream py-2 disabled:opacity-60"
+                className="mt-2 w-full min-h-11 text-[11px] uppercase tracking-widest text-cream/80 hover:text-cream py-2 disabled:opacity-60"
               >
                 {savingLocal ? 'preparing…' : 'save to my photos'}
               </button>
@@ -707,13 +683,14 @@ export default function EventCapturePage() {
   // Capture
   return (
     <main className="relative h-screen h-dvh overflow-hidden flex flex-col bg-ink text-cream pt-safe pb-safe">
+      {!demo && <UploadQueueStatus />}
       <header className="relative z-10 px-4 pt-3 pb-2 short:pt-2 short:pb-4 flex items-center justify-between short:bg-gradient-to-b short:from-black/70 short:to-transparent">
         <button
           onClick={() => {
             setRecording(false);
             setStage('welcome');
           }}
-          className="text-[10px] uppercase tracking-widest text-cream/80"
+          className="-ml-2 min-h-11 min-w-11 px-2 text-[11px] uppercase tracking-widest text-cream/85"
         >
           ← exit
         </button>
@@ -726,7 +703,7 @@ export default function EventCapturePage() {
         <button
           onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))}
           aria-label="flip camera"
-          className="text-[10px] uppercase tracking-widest text-cream/80"
+          className="-mr-2 min-h-11 min-w-11 px-2 text-[11px] uppercase tracking-widest text-cream/85"
         >
           flip
         </button>
@@ -796,7 +773,7 @@ export default function EventCapturePage() {
           <p className="font-serif italic text-cream/85 text-base">
             {FILTERS.find((f) => f.id === filter)?.label}
           </p>
-          <p className="text-[10px] tracking-widest uppercase text-cream/55">
+          <p className="text-[10px] tracking-widest uppercase text-cream/70">
             {FILTERS.find((f) => f.id === filter)?.blurb}
           </p>
         </div>
@@ -817,7 +794,7 @@ export default function EventCapturePage() {
         {/* filter strength slider — hidden on normal mode where it has no effect */}
         {filter !== 'none' && (
           <div className="px-6 pt-3 flex items-center gap-3 max-w-md mx-auto short:hidden">
-            <span className="text-[10px] uppercase tracking-widest text-cream/50 shrink-0">
+            <span className="text-[10px] uppercase tracking-widest text-cream/70 shrink-0">
               strength
             </span>
             <input
@@ -894,7 +871,7 @@ export default function EventCapturePage() {
                     onClick={() => setBoothLayout(f.id)}
                     aria-pressed={active}
                     className={[
-                      'shrink-0 px-2 min-[420px]:px-2.5 py-1.5 rounded-sm border text-[10px] uppercase tracking-wide min-[420px]:tracking-wider whitespace-nowrap transition-colors disabled:opacity-50',
+                      'shrink-0 min-h-11 px-2 min-[420px]:px-2.5 py-1.5 rounded-sm border text-[10px] uppercase tracking-wide min-[420px]:tracking-wider whitespace-nowrap transition-colors disabled:opacity-50',
                       active
                         ? 'border-gold text-gold'
                         : 'border-cream/20 text-cream/60 hover:text-cream',
@@ -912,7 +889,7 @@ export default function EventCapturePage() {
                 disabled={boothRunning}
                 onClick={() => setBoothTimer((t) => (t === 3 ? 5 : t === 5 ? 10 : 3))}
                 aria-label={`countdown timer: ${boothTimer} seconds, tap to change`}
-                className="shrink-0 px-2 min-[420px]:px-2.5 py-1.5 rounded-full border border-gold bg-gold/15 text-gold text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors disabled:opacity-50"
+                className="shrink-0 min-h-11 px-2 min-[420px]:px-2.5 py-1.5 rounded-full border border-gold bg-gold/15 text-gold text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors disabled:opacity-50"
               >
                 ⏱ {boothTimer}s
               </button>
@@ -922,7 +899,7 @@ export default function EventCapturePage() {
 
         <div className="px-6 pt-3 short:pt-0 grid grid-cols-3 items-center">
           {/* left spacer keeps the capture button visually centered */}
-          <span className="text-[10px] uppercase tracking-widest text-cream/40">
+          <span className="text-[10px] uppercase tracking-widest text-cream/70">
             {mode === 'photo' && 'still'}
             {mode === 'booth' && `${getFrame(boothLayout).shots} shots · ${boothTimer}s`}
             {mode === 'video' && 'up to 15s'}

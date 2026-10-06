@@ -14,7 +14,7 @@ export default function MarketingPage() {
 
       <section className="flex-1 grid place-items-center px-6 py-16">
         <div className="max-w-xl text-center">
-          <p className="text-[11px] tracking-widest uppercase text-ink/50 mb-6">
+          <p className="text-[11px] tracking-widest uppercase text-ink/70 mb-6">
             GlanceCam
           </p>
           <h1 className="font-serif italic text-5xl sm:text-6xl leading-[1.05] text-ink">
@@ -30,21 +30,21 @@ export default function MarketingPage() {
           <div className="mt-12 flex items-center justify-center gap-6 flex-wrap">
             <Link
               href="/pricing"
-              className="text-xs uppercase tracking-widest border-b border-gold pb-1 text-ink"
+              className="inline-flex items-center min-h-11 text-xs uppercase tracking-widest border-b border-gold text-ink"
             >
               see pricing
             </Link>
-            <span className="text-ink/30">·</span>
+            <span aria-hidden className="text-ink/70">·</span>
             <Link
               href="/event/demo"
-              className="text-xs uppercase tracking-widest text-ink/70 underline-offset-4 hover:underline"
+              className="inline-flex items-center min-h-11 text-xs uppercase tracking-widest text-ink/70 underline-offset-4 hover:underline"
             >
               try the camera
             </Link>
-            <span className="text-ink/30">·</span>
+            <span aria-hidden className="text-ink/70">·</span>
             <Link
               href="/admin"
-              className="text-xs uppercase tracking-widest text-ink/70 underline-offset-4 hover:underline"
+              className="inline-flex items-center min-h-11 text-xs uppercase tracking-widest text-ink/70 underline-offset-4 hover:underline"
             >
               studio admin
             </Link>
@@ -52,9 +52,9 @@ export default function MarketingPage() {
         </div>
       </section>
 
-      <footer className="px-6 py-6 text-center text-[10px] tracking-widest uppercase text-ink/40">
+      <footer className="px-6 py-6 text-center text-[10px] tracking-widest uppercase text-ink/70">
         Crafted in Toronto ·{' '}
-        <a href={mailto('GlanceCam inquiry')} className="underline-offset-4 hover:underline">
+        <a href={mailto('GlanceCam inquiry')} className="underline underline-offset-4 decoration-ink/40 hover:decoration-ink">
           {CONTACT_EMAIL}
         </a>
       </footer>

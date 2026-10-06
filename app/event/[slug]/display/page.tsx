@@ -3,6 +3,7 @@
 import { watchSubmissions } from '@/lib/live-submissions';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
+import QRCode from '@/components/QRCode';
 import {
   getEventBySlug,
   isDemoMode,
@@ -18,6 +19,7 @@ import {
   type EventRow,
   type SubmissionRow,
 } from '@/lib/supabase';
+import { filterLabel } from '@/lib/filters';
 import { getTier, isGalleryExpired } from '@/lib/tiers';
 
 const PHOTO_DURATION_MS = 6000;
@@ -26,6 +28,12 @@ const BOOMERANG_DURATION_MS = 6000;
 // videos advance on `ended`; this is the safety net for a clip that
 // can't decode or whose autoplay is blocked (clips are capped at 15s)
 const VIDEO_FALLBACK_MS = 20000;
+// realtime pushes new rows; the poll is only a safety net for a TV that
+// sits on venue wifi for hours (dropped sockets)
+const POLL_MS = 60_000;
+
+const byOldest = (a: SubmissionRow, b: SubmissionRow) =>
+  a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
 
 export default function DisplaySlideshowPage() {
   const params = useParams<{ slug: string }>();
@@ -33,29 +41,35 @@ export default function DisplaySlideshowPage() {
 
   const [event, setEvent] = useState<EventRow | null>(null);
   const [items, setItems] = useState<SubmissionRow[]>([]);
-  const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [guestUrl, setGuestUrl] = useState('');
   const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setGuestUrl(`${window.location.origin}/event/${slug}`);
+  }, [slug]);
 
   // load + subscribe ---------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     let unsub: (() => void) | null = null;
+    // the TV is public: never project pending (unmoderated) captures
+    const onLocal = (rows: SubmissionRow[]) => setItems(rows.filter((r) => r.approved));
 
     async function load() {
       if (slug === 'demo') {
         const demoEvent = makeDemoEvent();
         setEvent(demoEvent);
-        setItems(listSubmissions(DEMO_EVENT_ID));
-        unsub = subscribeToSubmissions(DEMO_EVENT_ID, setItems);
+        onLocal(listSubmissions(DEMO_EVENT_ID));
+        unsub = subscribeToSubmissions(DEMO_EVENT_ID, onLocal);
         return;
       }
 
       const local = getEventBySlug(slug);
       if (local) {
         setEvent(local);
-        setItems(listSubmissions(local.id));
-        unsub = subscribeToSubmissions(local.id, setItems);
+        onLocal(listSubmissions(local.id));
+        unsub = subscribeToSubmissions(local.id, onLocal);
         return;
       }
 
@@ -77,6 +91,7 @@ export default function DisplaySlideshowPage() {
             return (data ?? []) as SubmissionRow[];
           },
           onRows: setItems,
+          pollMs: POLL_MS,
         });
       }
     }
@@ -88,29 +103,89 @@ export default function DisplaySlideshowPage() {
     };
   }, [slug]);
 
-  // playable items — the TV slideshow can't render voice notes
+  // playable items, oldest first — the TV slideshow can't render voice notes
   const playable = useMemo(
-    () => items.filter((it) => it.media_type !== 'voice'),
+    () => items.filter((it) => it.media_type !== 'voice').sort(byOldest),
     [items],
   );
 
-  // clamp idx if the list shrinks
-  useEffect(() => {
-    if (idx >= playable.length && playable.length > 0) setIdx(0);
-  }, [playable.length, idx]);
-
+  // --- playback order ---------------------------------------------------
+  // The loop walks `playable` oldest -> newest. Anything that arrives
+  // while the show is running jumps the queue and plays next, so a guest
+  // sees their capture on the big screen within one slide; afterwards the
+  // loop resumes where it left off.
+  const [currentId, setCurrentId] = useState<string | null>(null);
   // bumps on every advance so a one-item slideshow still replays
   const [cycle, setCycle] = useState(0);
+  const playableRef = useRef<SubmissionRow[]>([]);
+  const seenRef = useRef<Set<string> | null>(null);
+  const queueRef = useRef<string[]>([]);
+  const loopIdRef = useRef<string | null>(null);
+  const currentIdRef = useRef<string | null>(null);
+  playableRef.current = playable;
+  currentIdRef.current = currentId;
+
   const advance = useCallback(() => {
-    setIdx((cur) => (playable.length === 0 ? 0 : (cur + 1) % playable.length));
+    const list = playableRef.current;
+    const ids = new Set(list.map((it) => it.id));
+    // 1) fresh arrivals first
+    while (queueRef.current.length) {
+      const next = queueRef.current.shift()!;
+      if (ids.has(next)) {
+        setCurrentId(next);
+        setCycle((c) => c + 1);
+        return;
+      }
+    }
+    // 2) otherwise continue the oldest-first loop
+    if (list.length === 0) {
+      setCurrentId(null);
+      return;
+    }
+    const at = list.findIndex((it) => it.id === loopIdRef.current);
+    const next = list[(at + 1) % list.length];
+    loopIdRef.current = next.id;
+    setCurrentId(next.id);
     setCycle((c) => c + 1);
-  }, [playable.length]);
+  }, []);
 
   const back = useCallback(() => {
-    setIdx((cur) =>
-      playable.length === 0 ? 0 : (cur - 1 + playable.length) % playable.length,
-    );
-  }, [playable.length]);
+    const list = playableRef.current;
+    if (list.length === 0) return;
+    const at = list.findIndex((it) => it.id === currentIdRef.current);
+    const prev = list[(at - 1 + list.length) % list.length];
+    loopIdRef.current = prev.id;
+    setCurrentId(prev.id);
+    setCycle((c) => c + 1);
+  }, []);
+
+  // reconcile the queue whenever the list changes
+  useEffect(() => {
+    const ids = playable.map((it) => it.id);
+    if (seenRef.current === null) {
+      // first non-empty load: everything is "seen", start the loop
+      if (ids.length === 0) return;
+      seenRef.current = new Set(ids);
+      loopIdRef.current = ids[0];
+      setCurrentId(ids[0]);
+      return;
+    }
+    const seen = seenRef.current;
+    for (const id of ids) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        queueRef.current.push(id);
+      }
+    }
+    const present = new Set(ids);
+    queueRef.current = queueRef.current.filter((id) => present.has(id));
+    // current slide was hidden/removed, or the show was idle (empty)
+    const cur = currentIdRef.current;
+    if (!cur || !present.has(cur)) advance();
+  }, [playable, advance]);
+
+  const current = playable.find((it) => it.id === currentId) ?? null;
+  const position = current ? playable.indexOf(current) + 1 : 0;
 
   // schedule the next advance. Keyed on the current item's identity so
   // a realtime insert that grows `playable` doesn't restart the timer
@@ -118,8 +193,7 @@ export default function DisplaySlideshowPage() {
   //   - photos:    timer-driven (6s)
   //   - boomerang: timer-driven (6s, loops in background)
   //   - video:     <video onEnded/onError> drives advance; 20s fallback.
-  const currentId = playable[idx]?.id;
-  const currentKind = playable[idx]?.media_type;
+  const currentKind = current?.media_type;
   useEffect(() => {
     if (timerRef.current) {
       window.clearTimeout(timerRef.current);
@@ -158,12 +232,12 @@ export default function DisplaySlideshowPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [advance, back]);
 
-  const current = playable[idx];
-
   if (!event) {
     return (
       <main className="min-h-screen grid place-items-center bg-black text-cream">
-        <p className="font-serif italic text-cream/60">loading…</p>
+        <p role="status" className="font-serif italic text-2xl text-cream/70">
+          loading…
+        </p>
       </main>
     );
   }
@@ -173,13 +247,9 @@ export default function DisplaySlideshowPage() {
     return (
       <main className="min-h-screen grid place-items-center bg-black text-cream text-center px-8">
         <div className="max-w-md">
-          <p className="text-[10px] uppercase tracking-[0.4em] text-cream/55">
-            slideshow mode
-          </p>
-          <p className="mt-6 font-serif italic text-4xl">
-            available on Signature and Studio
-          </p>
-          <p className="mt-4 text-cream/65 leading-relaxed">
+          <p className="text-base uppercase tracking-[0.4em] text-cream/70">slideshow mode</p>
+          <h1 className="mt-6 font-serif italic text-4xl">available on Signature and Studio</h1>
+          <p className="mt-4 text-lg text-cream/70 leading-relaxed">
             The reception slideshow projects every guest's capture as it
             arrives. Upgrade your event to turn it on.
           </p>
@@ -194,10 +264,10 @@ export default function DisplaySlideshowPage() {
     return (
       <main className="min-h-screen grid place-items-center bg-black text-cream text-center px-8">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.4em] text-cream/55">
+          <p className="text-base uppercase tracking-[0.4em] text-cream/70">
             the gallery has closed
           </p>
-          <p className="mt-6 font-serif italic text-5xl">{event.couple_names}</p>
+          <h1 className="mt-6 font-serif italic text-5xl">{event.couple_names}</h1>
         </div>
       </main>
     );
@@ -209,11 +279,9 @@ export default function DisplaySlideshowPage() {
     return (
       <main className="min-h-screen grid place-items-center bg-black text-cream text-center px-8">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.4em] text-cream/55">
-            still developing
-          </p>
-          <p className="mt-6 font-serif italic text-5xl">{event.couple_names}</p>
-          <p className="mt-4 text-cream/65">
+          <p className="text-base uppercase tracking-[0.4em] text-cream/70">still developing</p>
+          <h1 className="mt-6 font-serif italic text-5xl">{event.couple_names}</h1>
+          <p className="mt-4 text-xl text-cream/70">
             the gallery is being kept in the dark until the couple opens it.
           </p>
         </div>
@@ -221,49 +289,72 @@ export default function DisplaySlideshowPage() {
     );
   }
 
-  if (playable.length === 0) {
+  if (!current) {
+    // waiting for the first capture: make joining the obvious next step
     return (
-      <main className="min-h-screen grid place-items-center bg-black text-cream text-center px-8">
-        <div>
-          <p className="font-serif italic text-5xl">{event.couple_names}</p>
-          <p className="mt-4 text-[11px] uppercase tracking-[0.35em] text-cream/55">
+      <main className="min-h-screen grid place-items-center bg-black text-cream text-center px-8 py-10">
+        <div className="flex flex-col items-center">
+          <h1 className="font-serif italic text-6xl md:text-7xl">{event.couple_names}</h1>
+          <p className="mt-4 text-xl uppercase tracking-[0.35em] text-cream/70">
             the night is just beginning
           </p>
+          {guestUrl && (
+            <div className="mt-10">
+              <QRCode value={guestUrl} size={300} showDownload={false} />
+            </div>
+          )}
+          <p className="mt-6 font-serif italic text-4xl text-cream">scan to add yours</p>
+          {guestUrl && (
+            <p className="mt-2 text-xl text-cream/70">{guestUrl.replace(/^https?:\/\//, '')}</p>
+          )}
         </div>
       </main>
     );
   }
 
+  const filter = filterLabel(current.filter_name);
+
   return (
     <main className="fixed inset-0 bg-black text-cream overflow-hidden select-none">
-      {/* Layered current + previous for cross-fade */}
-      <SlideMedia key={`${current!.id}-${cycle}`} item={current!} onEnded={advance} paused={paused} />
+      <h1 className="sr-only">{event.couple_names} — live slideshow</h1>
 
-      {/* caption */}
-      <div className="absolute inset-x-0 bottom-0 z-10 px-12 pb-10 bg-gradient-to-t from-black/80 to-transparent">
-        <div className="flex items-end justify-between gap-6">
-          <div>
-            <p className="font-serif italic text-3xl md:text-4xl text-cream">
-              {current!.guest_name ?? 'anonymous'}
+      <SlideMedia key={`${current.id}-${cycle}`} item={current} onEnded={advance} paused={paused} />
+
+      {/* caption + persistent join QR */}
+      <div className="absolute inset-x-0 bottom-0 z-10 px-12 pb-10 pt-24 bg-gradient-to-t from-black/85 via-black/50 to-transparent">
+        <div className="flex items-end justify-between gap-8">
+          <div className="min-w-0">
+            <p className="font-serif italic text-4xl md:text-5xl text-cream truncate">
+              {current.guest_name ?? 'anonymous'}
             </p>
-            <p className="mt-1 text-[10px] uppercase tracking-[0.35em] text-cream/60">
-              {current!.filter_name} · {labelFor(current!.media_type)}
+            <p className="mt-2 text-2xl uppercase tracking-[0.2em] text-cream/75">
+              {filter ? `${filter} · ` : ''}
+              {labelFor(current.media_type)}
             </p>
           </div>
-          <div className="text-right">
-            <p className="font-serif italic text-2xl text-cream/80">
-              {event.couple_names}
-            </p>
-            <p className="text-[10px] uppercase tracking-[0.35em] text-cream/40">
-              {idx + 1} / {playable.length}
-            </p>
+          <div className="flex items-end gap-8 shrink-0">
+            <div className="text-right">
+              <p className="font-serif italic text-3xl text-cream/85">{event.couple_names}</p>
+              <p className="mt-1 text-lg uppercase tracking-[0.3em] text-cream/70">
+                {position} / {playable.length}
+              </p>
+            </div>
+            {guestUrl && (
+              <div className="flex flex-col items-center">
+                <QRCode value={guestUrl} size={120} showDownload={false} />
+                <p className="mt-2 text-xl font-serif italic text-cream">scan to add yours</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* paused overlay hint (lower-left) */}
+      {/* paused overlay hint (upper-left) */}
       {paused && (
-        <div className="absolute top-6 left-6 z-20 text-[10px] uppercase tracking-[0.35em] text-cream/70 border border-cream/30 rounded-full px-3 py-1.5">
+        <div
+          role="status"
+          className="absolute top-6 left-6 z-20 text-lg uppercase tracking-[0.3em] text-cream/85 border border-cream/40 bg-black/50 rounded-full px-4 py-2"
+        >
           paused · press space to resume
         </div>
       )}
@@ -291,12 +382,14 @@ function SlideMedia({
     else v.play().catch(() => {});
   }, [paused]);
 
+  const desc = `${labelFor(item.media_type)} by ${item.guest_name ?? 'an anonymous guest'}`;
+
   if (item.media_type === 'photo') {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={item.media_url}
-        alt=""
+        alt={desc}
         className="absolute inset-0 w-full h-full object-contain animate-slide-in"
       />
     );
@@ -305,6 +398,7 @@ function SlideMedia({
     <video
       ref={videoRef}
       src={item.media_url}
+      aria-label={desc}
       className="absolute inset-0 w-full h-full object-contain animate-slide-in"
       autoPlay={!paused}
       playsInline
@@ -336,8 +430,9 @@ function ControlsHint() {
   }, []);
   return (
     <div
+      aria-hidden={!visible}
       className={[
-        'absolute top-6 right-6 z-20 text-[10px] uppercase tracking-[0.3em] text-cream/55 transition-opacity duration-500',
+        'absolute top-6 right-6 z-20 text-base uppercase tracking-[0.25em] text-cream/75 bg-black/40 rounded-full px-4 py-2 transition-opacity duration-500',
         visible ? 'opacity-100' : 'opacity-0',
       ].join(' ')}
     >

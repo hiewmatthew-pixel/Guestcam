@@ -2,6 +2,9 @@
 // onto a 2D canvas. Used both by lib/composite.ts (still photos) and
 // by components/FilteredCamera.tsx (live video / boomerang recording).
 
+import { formatWeddingDate } from './dates';
+import { ensureCanvasFonts, serifFont } from './fonts';
+
 export type CoupleOverlayPayload = {
   couple_names?: string;
   wedding_date?: string;
@@ -16,6 +19,10 @@ export function drawCoupleOverlay(
   const names = event.couple_names?.trim();
   const date = formatOverlayDate(event.wedding_date);
   if (!names && !date) return;
+  // Synchronous per-frame callers (live video) can't await; kick off the
+  // font load so later frames use Cormorant. Still-photo callers should
+  // `await ensureCanvasFonts()` first (lib/composite.ts does).
+  void ensureCanvasFonts();
 
   const bottomPad = height * 0.06;
   const namesSize = Math.round(height * 0.055);
@@ -34,7 +41,7 @@ export function drawCoupleOverlay(
   let cursorY = height - bottomPad;
 
   if (date) {
-    ctx.font = `400 ${dateSize}px "Cormorant Garamond", "Times New Roman", serif`;
+    ctx.font = serifFont(dateSize);
     // 2D context letterSpacing is uneven across browsers — emulate
     // by injecting double spaces between glyphs.
     const tracked = date.split('').join('  ');
@@ -43,23 +50,14 @@ export function drawCoupleOverlay(
   }
 
   if (names) {
-    ctx.font = `italic 500 ${namesSize}px "Cormorant Garamond", "Times New Roman", serif`;
+    ctx.font = serifFont(namesSize, { italic: true, weight: 500 });
     ctx.fillText(names, width / 2, cursorY);
   }
 
   ctx.restore();
 }
 
+/** "06 · 20 · 2026" — the wedding date as a local calendar day. */
 export function formatOverlayDate(input?: string): string | null {
-  if (!input) return null;
-  try {
-    const d = new Date(input);
-    if (Number.isNaN(d.getTime())) return null;
-    const parts = d
-      .toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
-      .split('/');
-    return parts.join(' · ');
-  } catch {
-    return null;
-  }
+  return formatWeddingDate(input, 'dots');
 }

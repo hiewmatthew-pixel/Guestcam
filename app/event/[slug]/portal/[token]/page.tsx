@@ -25,6 +25,7 @@ import {
 import { extensionFor } from '@/lib/media';
 import { CONTACT_EMAIL, mailto } from '@/lib/contact';
 import { getTier } from '@/lib/tiers';
+import { formatWeddingDate } from '@/lib/dates';
 import { constantTimeEqual, LIMITS, safeFilenamePart } from '@/lib/validate';
 import {
   getPortalEventAction,
@@ -136,15 +137,7 @@ export default function CouplePortalPage() {
 
   const dateLabel = useMemo(() => {
     if (!event) return '';
-    try {
-      return new Date(event.wedding_date).toLocaleDateString(undefined, {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      });
-    } catch {
-      return event.wedding_date;
-    }
+    return formatWeddingDate(event.wedding_date, 'long') ?? event.wedding_date;
   }, [event]);
 
   const tier = useMemo(() => getTier(event?.tier), [event]);
@@ -274,7 +267,9 @@ export default function CouplePortalPage() {
   if (access === 'loading') {
     return (
       <main className="min-h-screen grid place-items-center">
-        <p className="font-serif italic text-ink/60">opening your portal…</p>
+        <p role="status" className="font-serif italic text-ink/70">
+          opening your portal…
+        </p>
       </main>
     );
   }
@@ -286,16 +281,16 @@ export default function CouplePortalPage() {
           <h1 className="font-serif italic text-3xl">
             {access === 'denied' ? 'this link is no longer valid' : 'we couldn’t find your event'}
           </h1>
-          <p className="mt-3 text-ink/60 leading-relaxed">
+          <p className="mt-3 text-ink/70 leading-relaxed">
             {access === 'denied'
               ? 'Your studio may have rotated this link. Ask them to send you the new one.'
               : 'Double-check the URL or reach out to your studio for a fresh link.'}
           </p>
           <Link
             href="/"
-            className="mt-8 inline-block text-xs uppercase tracking-widest border-b border-gold pb-1"
+            className="mt-6 inline-flex items-center min-h-11 text-xs uppercase tracking-widest"
           >
-            go home
+            <span className="border-b border-gold pb-1">go home</span>
           </Link>
         </div>
       </main>
@@ -309,20 +304,20 @@ export default function CouplePortalPage() {
         <span className="text-[11px] tracking-widest uppercase text-ink/70">
           your portal
         </span>
-        <span className="ml-auto text-[10px] uppercase tracking-widest text-gold">
+        <span className="ml-auto text-[10px] uppercase tracking-widest text-gold-deep">
           private link
         </span>
       </header>
 
       <section className="px-6 pt-10 pb-6 text-center max-w-2xl mx-auto">
-        <p className="text-[11px] tracking-widest uppercase text-ink/50">{dateLabel}</p>
+        <p className="text-[11px] tracking-widest uppercase text-ink/70">{dateLabel}</p>
         <h1 className="mt-3 font-serif italic text-5xl text-ink leading-tight">
           {event?.couple_names}
         </h1>
-        <p className="mt-4 font-serif italic text-ink/65 text-lg">
+        <p className="mt-4 font-serif italic text-ink/70 text-lg">
           everything for your evening, in one quiet place
         </p>
-        <p className="mt-4 inline-flex items-center text-[10px] uppercase tracking-widest border border-gold text-gold px-2 py-1 rounded-sm">
+        <p className="mt-4 inline-flex items-center text-[10px] uppercase tracking-widest border border-gold text-gold-deep px-2 py-1 rounded-sm">
           {tier.label} tier
         </p>
       </section>
@@ -331,7 +326,7 @@ export default function CouplePortalPage() {
       <section className="px-6 py-10">
         <div className="max-w-3xl mx-auto grid md:grid-cols-2 gap-10 items-start">
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-4">
+            <p className="text-[10px] uppercase tracking-widest text-ink/70 mb-4">
               your guest qr
             </p>
             <QRCode
@@ -339,7 +334,7 @@ export default function CouplePortalPage() {
               label={captureUrl.replace(/^https?:\/\//, '')}
               fileName={`${slug}-guest-qr.png`}
             />
-            <p className="mt-4 text-xs text-ink/55 leading-relaxed max-w-xs">
+            <p className="mt-4 text-xs text-ink/70 leading-relaxed max-w-xs">
               Print this on your table cards. Each guest scans, the camera opens —
               no app, no account.
             </p>
@@ -347,7 +342,7 @@ export default function CouplePortalPage() {
               href={`/event/${slug}/qr`}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-3 inline-block text-[10px] uppercase tracking-widest text-ink/70 underline decoration-gold/60 underline-offset-4 hover:text-ink"
+              className="mt-1 inline-flex items-center min-h-11 text-[10px] uppercase tracking-widest text-ink/70 underline decoration-gold/60 underline-offset-4 hover:text-ink"
             >
               open print-ready 4×6 table card
             </a>
@@ -356,7 +351,7 @@ export default function CouplePortalPage() {
                 href={`/event/${slug}/display`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 inline-block text-[10px] uppercase tracking-widest text-ink/70 underline decoration-gold/60 underline-offset-4 hover:text-ink"
+                className="inline-flex items-center min-h-11 text-[10px] uppercase tracking-widest text-ink/70 underline decoration-gold/60 underline-offset-4 hover:text-ink"
               >
                 open slideshow on a tv / projector
               </a>
@@ -364,33 +359,38 @@ export default function CouplePortalPage() {
           </div>
 
           <div className="md:pt-8">
-            <p className="text-[10px] uppercase tracking-widest text-ink/50">
+            <p className="text-[10px] uppercase tracking-widest text-ink/70">
               moments captured
             </p>
             <p className="font-serif italic text-6xl text-ink mt-1 leading-none">
               {approvedItems.length}
             </p>
             {items.length > approvedItems.length && (
-              <p className="mt-2 text-[10px] uppercase tracking-widest text-gold/85">
+              <p className="mt-2 text-[10px] uppercase tracking-widest text-gold-deep">
                 · {items.length - approvedItems.length} pending review
               </p>
             )}
 
             <button
+              type="button"
               onClick={handleDownloadZip}
               disabled={downloading || approvedItems.length === 0}
-              className="mt-8 bg-ink text-cream py-3 px-5 text-xs uppercase tracking-widest disabled:opacity-50 block"
+              className="mt-8 min-h-11 bg-ink text-cream py-3 px-5 text-xs uppercase tracking-widest disabled:opacity-50 block"
             >
               {downloading ? 'preparing zip…' : 'download all as zip'}
             </button>
 
             <button
+              type="button"
               onClick={() => copyToClipboard(galleryShareUrl, 'gallery')}
-              className="mt-3 border border-ink py-3 px-5 text-xs uppercase tracking-widest block w-fit hover:bg-ink hover:text-cream transition-colors"
+              className="mt-3 min-h-11 border border-ink py-3 px-5 text-xs uppercase tracking-widest block w-fit hover:bg-ink hover:text-cream transition-colors"
             >
               {copied === 'gallery' ? 'copied ✦' : 'copy gallery link'}
             </button>
-            <p className="mt-2 text-[11px] text-ink/50">
+            <p role="status" className="sr-only">
+              {copied === 'gallery' ? 'gallery link copied to clipboard' : ''}
+            </p>
+            <p className="mt-2 text-[11px] text-ink/70">
               Share this read-only link with family who couldn’t be there.
             </p>
           </div>
@@ -401,54 +401,57 @@ export default function CouplePortalPage() {
       <section className="px-6 pb-10">
         <div className="max-w-2xl mx-auto border-t border-warm-gray-light pt-10 space-y-8">
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-3">
+            <label
+              htmlFor="portal-welcome"
+              className="block text-[10px] uppercase tracking-widest text-ink/70 mb-3"
+            >
               welcome message for your guests
-            </p>
+            </label>
             <textarea
+              id="portal-welcome"
               value={welcomeDraft}
               onChange={(e) => setWelcomeDraft(e.target.value)}
               maxLength={LIMITS.WELCOME_MESSAGE}
               rows={3}
               placeholder="A short note your guests will see before they open the camera…"
-              className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2 resize-none"
+              className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold-deep py-2 resize-none"
             />
             <div className="mt-3 flex items-center gap-3">
               <button
+                type="button"
                 onClick={saveWelcome}
                 disabled={savingWelcome}
-                className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5 disabled:opacity-50"
+                className="min-h-11 min-w-11 text-[10px] uppercase tracking-widest disabled:opacity-50"
               >
-                {savingWelcome ? 'saving…' : 'save'}
+                <span className="border-b border-gold pb-0.5">
+                  {savingWelcome ? 'saving…' : 'save'}
+                </span>
               </button>
-              {welcomeSaved && (
-                <span className="font-serif italic text-ink/60 text-sm">saved ✦</span>
-              )}
+              <span role="status" className="font-serif italic text-ink/70 text-sm">
+                {welcomeSaved ? 'saved ✦' : ''}
+              </span>
             </div>
           </div>
 
           {event && getTier(event.tier).features.moderationQueue && (
             <div className="flex items-start justify-between gap-6">
               <div>
-                <p className="text-[10px] uppercase tracking-widest text-ink/50 mb-1">
+                <p
+                  id="auto-approve-label"
+                  className="text-[10px] uppercase tracking-widest text-ink/70 mb-1"
+                >
                   approve new captures automatically
                 </p>
-                <p className="text-xs text-ink/55 leading-relaxed max-w-md">
+                <p id="auto-approve-desc" className="text-xs text-ink/70 leading-relaxed max-w-md">
                   When this is on, every guest's photo appears in the gallery
                   straight away. Turn it off and new captures wait here for you
                   to approve or hide before the rest of the gallery sees them.
                 </p>
               </div>
-              <label className="shrink-0 inline-flex items-center cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={event?.auto_approve !== false}
-                  onChange={(e) => handleAutoApproveToggle(e.target.checked)}
-                />
-                <span className="w-11 h-6 bg-warm-gray-light rounded-full peer-checked:bg-gold transition-colors relative">
-                  <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-cream rounded-full shadow transition-transform peer-checked:translate-x-5" />
-                </span>
-              </label>
+              <AutoApproveSwitch
+                on={event?.auto_approve !== false}
+                onChange={handleAutoApproveToggle}
+              />
             </div>
           )}
         </div>
@@ -458,7 +461,7 @@ export default function CouplePortalPage() {
       <section className="pb-16">
         <div className="px-6 mb-6 text-center">
           <h2 className="font-serif italic text-3xl text-ink">your gallery</h2>
-          <p className="mt-1 text-[10px] uppercase tracking-widest text-ink/50">
+          <p className="mt-1 text-[10px] uppercase tracking-widest text-ink/70">
             updates as guests capture
           </p>
         </div>
@@ -472,14 +475,58 @@ export default function CouplePortalPage() {
         />
       </section>
 
-      <footer className="px-6 py-8 text-center text-[10px] tracking-widest uppercase text-ink/40 border-t border-warm-gray-light">
+      <footer className="px-6 py-8 text-center text-[10px] tracking-widest uppercase text-ink/70 border-t border-warm-gray-light">
         private link · share only with people you want in your gallery
         <br />
         questions?{' '}
-        <a href={mailto('GlanceCam portal help')} className="underline-offset-4 hover:underline normal-case tracking-normal">
+        <a href={mailto('GlanceCam portal help')} className="underline underline-offset-4 decoration-ink/40 hover:decoration-ink normal-case tracking-normal">
           {CONTACT_EMAIL}
         </a>
       </footer>
     </main>
+  );
+}
+
+/**
+ * Accessible on/off switch. A real <button role="switch"> so it's
+ * keyboard-operable (Space/Enter), announces its state via aria-checked,
+ * and shows the global focus ring. 44px hit area around the 44x24 track.
+ * Track colours meet 3:1 non-text contrast against cream in both states.
+ */
+function AutoApproveSwitch({
+  on,
+  onChange,
+}: {
+  on: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-labelledby="auto-approve-label"
+      aria-describedby="auto-approve-desc"
+      onClick={() => onChange(!on)}
+      className="shrink-0 inline-flex items-center gap-2 min-h-11 min-w-11 px-1 rounded-full select-none"
+    >
+      <span aria-hidden className="text-[10px] uppercase tracking-widest text-ink/70 w-6 text-right">
+        {on ? 'on' : 'off'}
+      </span>
+      <span
+        aria-hidden
+        className={[
+          'relative w-11 h-6 rounded-full transition-colors',
+          on ? 'bg-gold-deep' : 'bg-ink/55',
+        ].join(' ')}
+      >
+        <span
+          className={[
+            'absolute top-0.5 left-0.5 w-5 h-5 bg-cream rounded-full shadow transition-transform',
+            on ? 'translate-x-5' : 'translate-x-0',
+          ].join(' ')}
+        />
+      </span>
+    </button>
   );
 }

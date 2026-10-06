@@ -13,6 +13,8 @@ const config: Config = {
         ink: '#1A1A1A',
         gold: '#B8956A',
         'gold-soft': '#D4B894',
+        // AA-safe gold for small text on cream (5.35:1 on #F5F1EA, 6.02:1 on white)
+        'gold-deep': '#7A5E3A',
         'warm-gray': '#A8A29E',
         'warm-gray-light': '#E7E2D9',
       },
@@ -42,11 +44,11 @@ const config: Config = {
   },
   plugins: [
     // `short:` = very short viewports: Galaxy Z Flip cover screens
-    // (~310-400px tall) and phones in landscape. The camera switches to an
+    // (~310-400px, and iPhone SE-size screens in Safari ~550px tall) and phones in landscape. The camera switches to an
     // overlay layout so the viewfinder keeps the whole screen. Defined as a
     // variant (not a `screens` entry) so min-[...]/max-[...] keep working.
     plugin(({ addVariant }) => {
-      addVariant('short', '@media (max-height: 540px)');
+      addVariant('short', '@media (max-height: 600px)');
     }),
   ],
 };

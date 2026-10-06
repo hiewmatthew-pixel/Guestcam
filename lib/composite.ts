@@ -9,6 +9,7 @@ import {
   stickerToDataUrl,
 } from './stickers';
 import { drawCoupleOverlay } from './overlay';
+import { ensureCanvasFonts } from './fonts';
 import type { PlacedSticker } from '@/components/StickerEditor';
 
 const STICKER_BASE_PX = 140; // matches the on-screen sticker render size
@@ -28,7 +29,11 @@ export async function compositePhoto(
     !!opts.burnCoupleOverlay && (!!event?.couple_names || !!event?.wedding_date);
   if (placed.length === 0 && !hasOverlay) return sourceBlob;
 
-  const img = await blobToImage(sourceBlob);
+  const [img] = await Promise.all([
+    blobToImage(sourceBlob),
+    // the overlay paints with the next/font serif — make sure it's loaded
+    hasOverlay ? ensureCanvasFonts() : Promise.resolve(),
+  ]);
   const canvas = document.createElement('canvas');
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;

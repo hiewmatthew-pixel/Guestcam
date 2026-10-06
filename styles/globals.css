@@ -6,6 +6,29 @@
   --color-cream: #F5F1EA;
   --color-ink: #1A1A1A;
   --color-gold: #B8956A;
+  /* AA-safe gold for text/focus on cream: 5.35:1 vs #F5F1EA */
+  --color-gold-deep: #7A5E3A;
+}
+
+/* Keyboard focus: one consistent, visible ring everywhere. gold-deep is
+   5.35:1 against cream; on dark surfaces (.bg-ink, .bg-black, dialogs)
+   the ring flips to cream (14.6:1 vs ink). */
+:focus-visible {
+  outline: 2px solid var(--color-gold-deep);
+  outline-offset: 2px;
+}
+.bg-ink :focus-visible,
+.bg-black :focus-visible,
+[role='dialog'] :focus-visible,
+.focus-ring-light:focus-visible {
+  outline-color: var(--color-cream);
+}
+/* text inputs styled with a bottom border only: keep a visible ring */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--color-gold-deep);
+  outline-offset: 2px;
 }
 
 html,
@@ -56,6 +79,29 @@ button {
 }
 .animate-slide-in {
   animation: slide-fade-in 700ms ease-out;
+}
+
+/* Respect the OS "reduce motion" setting: no slide/fade/scale motion,
+   near-instant transitions, no smooth scrolling. Opacity end-states are
+   kept (animations run 0.01ms so `forwards` fills still apply). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-slide-in,
+  .animate-fade-up,
+  .animate-fade-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
 
 /* Safe-area insets for standalone PWA / notched devices

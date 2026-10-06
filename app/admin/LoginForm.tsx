@@ -21,16 +21,22 @@ export default function LoginForm() {
       }
       className="max-w-sm w-full"
     >
-      <label className="block text-[10px] uppercase tracking-widest text-ink/60 mb-2">
+      <label htmlFor="admin-password" className="block text-[10px] uppercase tracking-widest text-ink/70 mb-2">
         admin password
       </label>
       <input
+        id="admin-password"
         type="password"
         name="password"
+        autoComplete="current-password"
         autoFocus
-        className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold outline-none py-2"
+        className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold-deep py-2"
       />
-      {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-red-700">
+          {error}
+        </p>
+      )}
       <button
         disabled={pending}
         className="mt-8 w-full bg-ink text-cream py-3 text-xs uppercase tracking-widest disabled:opacity-60"

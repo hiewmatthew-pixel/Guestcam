@@ -205,3 +205,14 @@ export const VERTEX_SHADER = VS;
 export function getFilter(id: FilterId): FilterDef {
   return FILTERS.find((f) => f.id === id) ?? FILTERS[0];
 }
+
+/**
+ * Human label for a stored `filter_name` ("portra-400" -> "Portra 400").
+ * Returns null for 'none' and for values that aren't a known film filter (e.g. 'voice'),
+ * so callers can omit the label rather than show a raw id or "Normal".
+ */
+export function filterLabel(name: string | null | undefined): string | null {
+  // 'none' ("Normal") carries no information in a caption
+  if (!name || name === 'none' || !FILTERS.some((f) => f.id === name)) return null;
+  return getFilter(name as FilterId).label;
+}

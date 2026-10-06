@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import Logo from '@/components/Logo';
+import { formatWeddingDate, todayYmd } from '@/lib/dates';
 import { getEventBySlug, isDemoMode } from '@/lib/demo-store';
 import {
   fetchPublicEventBySlug,
@@ -26,7 +27,7 @@ export default function EventQRPrintPage() {
         id: 'demo-event',
         slug: 'demo',
         couple_names: 'Sarah & James',
-        wedding_date: new Date().toISOString().slice(0, 10),
+        wedding_date: todayYmd(),
         welcome_message: null,
         tier: 'signature',
         manage_token: 'demo-portal',
@@ -51,22 +52,12 @@ export default function EventQRPrintPage() {
   if (!event) {
     return (
       <main className="min-h-screen grid place-items-center">
-        <p className="font-serif italic text-ink/60">loading…</p>
+        <p role="status" className="font-serif italic text-ink/70">loading…</p>
       </main>
     );
   }
 
-  const date = (() => {
-    try {
-      return new Date(event.wedding_date).toLocaleDateString(undefined, {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      });
-    } catch {
-      return event.wedding_date;
-    }
-  })();
+  const date = formatWeddingDate(event.wedding_date, 'long') ?? event.wedding_date;
 
   return (
     <main className="min-h-screen bg-cream text-ink">
@@ -74,20 +65,21 @@ export default function EventQRPrintPage() {
       <header className="print:hidden px-6 py-4 flex items-center justify-between border-b border-warm-gray-light">
         <div className="flex items-center gap-2">
           <Logo className="h-4 w-6 text-ink" />
-          <span className="text-[10px] uppercase tracking-widest text-ink/60">
+          <span className="text-[10px] uppercase tracking-widest text-ink/70">
             table card · {event.couple_names}
           </span>
         </div>
         <div className="flex items-center gap-4">
           <a
             href={`/admin/${slug}`}
-            className="text-[10px] uppercase tracking-widest text-ink/60 hover:text-ink"
+            className="inline-flex items-center min-h-11 px-2 text-[10px] uppercase tracking-widest text-ink/70 hover:text-ink"
           >
             back
           </a>
           <button
             onClick={() => window.print()}
-            className="text-[10px] uppercase tracking-widest bg-ink text-cream px-4 py-2 rounded-full"
+            type="button"
+            className="min-h-11 text-[10px] uppercase tracking-widest bg-ink text-cream px-4 py-2 rounded-full"
           >
             print this card
           </button>
@@ -101,19 +93,21 @@ export default function EventQRPrintPage() {
           style={{ aspectRatio: '4 / 6' }}
         >
           <Logo className="h-5 w-8 mx-auto text-ink" />
-          <p className="mt-4 text-[10px] uppercase tracking-[0.4em] text-ink/55">
+          <p className="mt-4 text-[10px] uppercase tracking-[0.4em] text-ink/70">
             join the guest cam
           </p>
           <h1 className="mt-6 font-serif italic text-4xl leading-tight">
             {event.couple_names}
           </h1>
-          <p className="mt-2 text-[11px] uppercase tracking-[0.3em] text-ink/60">
+          <p className="mt-2 text-[11px] uppercase tracking-[0.3em] text-ink/70">
             {date}
           </p>
 
           <div className="mt-8 flex justify-center">
             <div className="bg-cream p-3 border border-ink/15 rounded-sm">
               <QRCodeSVG
+                role="img"
+                aria-label={`QR code linking to ${captureUrl}`}
                 value={captureUrl}
                 size={220}
                 bgColor="#F5F1EA"
@@ -126,7 +120,7 @@ export default function EventQRPrintPage() {
           <p className="mt-6 font-serif italic text-ink/75 text-lg">
             scan to capture a moment
           </p>
-          <p className="mt-2 text-[10px] uppercase tracking-[0.25em] text-ink/45 break-all">
+          <p className="mt-2 text-[10px] uppercase tracking-[0.25em] text-ink/70 break-all">
             {captureUrl.replace(/^https?:\/\//, '')}
           </p>
         </article>

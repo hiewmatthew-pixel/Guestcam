@@ -112,7 +112,9 @@ export default function EventGalleryPage() {
   if (loading) {
     return (
       <main className="min-h-screen grid place-items-center">
-        <p className="font-serif italic text-ink/60">loading the gallery…</p>
+        <p role="status" className="font-serif italic text-ink/70">
+          loading the gallery…
+        </p>
       </main>
     );
   }
@@ -120,18 +122,19 @@ export default function EventGalleryPage() {
   if (loadError) {
     return (
       <main className="min-h-screen grid place-items-center px-6">
-        <div className="text-center max-w-sm">
+        <div role="alert" className="text-center max-w-sm">
           <p className="font-serif italic text-2xl text-ink/70">
             we couldn’t load the gallery
           </p>
-          <p className="mt-2 text-sm text-ink/50">
+          <p className="mt-2 text-sm text-ink/70">
             Check your connection and try again.
           </p>
           <button
+            type="button"
             onClick={() => setReloadKey((k) => k + 1)}
-            className="mt-6 text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
+            className="mt-4 min-h-11 px-2 text-[10px] uppercase tracking-widest"
           >
-            try again
+            <span className="border-b border-gold pb-0.5">try again</span>
           </button>
         </div>
       </main>
@@ -141,7 +144,7 @@ export default function EventGalleryPage() {
   if (!event) {
     return (
       <main className="min-h-screen grid place-items-center">
-        <p className="font-serif italic text-ink/60">event not found</p>
+        <p className="font-serif italic text-ink/70">event not found</p>
       </main>
     );
   }
@@ -149,26 +152,27 @@ export default function EventGalleryPage() {
   return (
     <main className="min-h-screen">
       <header className="px-6 pt-8 pb-6 flex items-center gap-3">
-        <Link href="/" aria-label="back to home" className="shrink-0">
+        <Link href="/" className="shrink-0 grid place-items-center min-h-11 min-w-11 -ml-2">
           <Logo className="h-5 w-8 text-ink" />
+          <span className="sr-only">GlanceCam home</span>
         </Link>
         <div className="flex-1">
-          <p className="text-[10px] uppercase tracking-widest text-ink/50">
+          <p className="text-[10px] uppercase tracking-widest text-ink/70">
             live gallery
           </p>
           <h1 className="font-serif italic text-2xl">{event.couple_names}</h1>
         </div>
         <Link
           href={`/event/${slug}`}
-          className="text-[10px] uppercase tracking-widest border-b border-gold pb-0.5"
+          className="inline-flex items-center min-h-11 text-[10px] uppercase tracking-widest"
         >
-          capture
+          <span className="border-b border-gold pb-0.5">capture</span>
         </Link>
       </header>
 
       {isGalleryExpired(event) ? (
         <section className="py-24 px-6 text-center max-w-md mx-auto">
-          <p className="text-[10px] uppercase tracking-[0.4em] text-ink/45">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-ink/70">
             the gallery has closed
           </p>
           <h2 className="mt-6 font-serif italic text-3xl leading-tight">
@@ -176,7 +180,7 @@ export default function EventGalleryPage() {
             <br />
             handed back to the couple
           </h2>
-          <p className="mt-6 text-ink/60 leading-relaxed">
+          <p className="mt-6 text-ink/70 leading-relaxed">
             The shared gallery for {event.couple_names} stayed open for{' '}
             {getTier(event.tier).features.galleryDays} days after the wedding
             and has now closed. The couple keeps every capture.

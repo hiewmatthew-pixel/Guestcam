@@ -12,7 +12,7 @@ export default function OfflinePage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
       <Logo className="h-10 w-16 text-gold mb-10" />
-      <p className="text-[11px] tracking-widest uppercase text-ink/50 mb-4">GlanceCam</p>
+      <p className="text-[11px] tracking-widest uppercase text-ink/70 mb-4">GlanceCam</p>
       <h1 className="text-4xl italic mb-5">You&rsquo;re offline</h1>
       <p className="max-w-sm text-sm leading-relaxed text-ink/70 mb-10">
         Your captures need a connection to send. Reconnect and try again.
