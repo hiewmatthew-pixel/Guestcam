@@ -5,7 +5,7 @@
 // guests via RLS; everything for the couple/admin via a server action).
 // Rather than patching rows in place, every signal triggers a debounced
 // reload, because anon realtime never sees pending or newly hidden rows:
-//   - postgres_changes on submissions (new approved captures)
+//   - a broadcast the server sends after each new capture
 //   - a broadcast the server sends after approve/hide
 //   - an optional poll (portal/admin, so pending rows show up)
 //   - the tab becoming visible again
@@ -53,18 +53,10 @@ export function watchSubmissions(opts: {
 
   reload();
 
+  // Anon can't subscribe to table changes (it has no table access), so the
+  // server broadcasts after every new capture and every moderation change.
   const channels = sb
-    ? [
-        sb
-          .channel(`subs-${opts.eventId}-${Math.random().toString(36).slice(2, 8)}`)
-          .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'submissions', filter: `event_id=eq.${opts.eventId}` },
-            soon,
-          )
-          .subscribe(),
-        sb.channel(moderationChannelName(opts.eventId)).on('broadcast', { event: 'changed' }, soon).subscribe(),
-      ]
+    ? [sb.channel(moderationChannelName(opts.eventId)).on('broadcast', { event: 'changed' }, soon).subscribe()]
     : [];
 
   const poll = opts.pollMs ? setInterval(reload, opts.pollMs) : null;

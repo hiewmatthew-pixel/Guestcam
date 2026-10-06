@@ -3,6 +3,7 @@
 // The service-role key bypasses RLS, so the server action MUST authorize
 // the caller (admin cookie or manage_token check) BEFORE touching this.
 
+import 'server-only';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -1,6 +1,7 @@
 'use client';
 
 import { ensureCanvasFonts } from '@/lib/fonts';
+import { reencodePhoto } from '@/lib/reencode';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FilterId, VERTEX_SHADER, getFilter } from '@/lib/filters';
 import { drawCoupleOverlay } from '@/lib/overlay';
@@ -772,12 +773,20 @@ export default function FilteredCamera({
               upload a photo instead
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/*"
                 className="sr-only"
-                onChange={(e) => {
+                onChange={async (e) => {
                   const file = e.target.files?.[0];
                   e.target.value = '';
-                  if (file) onPhotoCaptured(file);
+                  if (!file) return;
+                  // strips GPS/EXIF, fixes rotation, converts HEIC where the
+                  // browser can decode it, and keeps the size reasonable
+                  // never upload the original: it may carry location data
+                  try {
+                    onPhotoCaptured(await reencodePhoto(file));
+                  } catch {
+                    alert('That photo could not be opened. Try a different one.');
+                  }
                 }}
               />
             </label>

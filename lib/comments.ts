@@ -43,11 +43,8 @@ export async function listCommentsFor(
 ): Promise<CommentRow[]> {
   if (useSupabase(eventId)) {
     const sb = getSupabase()!;
-    const { data, error } = await sb
-      .from('comments')
-      .select('*')
-      .eq('submission_id', submissionId)
-      .order('created_at', { ascending: true });
+    // only comments on photos this guest can see (approved, revealed, open)
+    const { data, error } = await sb.rpc('get_comments', { p_submission_id: submissionId });
     if (error) throw error;
     return (data ?? []) as CommentRow[];
   }
@@ -101,18 +98,13 @@ export function subscribeToComments(
 ): () => void {
   if (!useSupabase(eventId)) return () => {};
   const sb = getSupabase()!;
+  // the server broadcasts each new comment (anon has no table access)
   const channel = sb
-    .channel(`comments-${submissionId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'comments',
-        filter: `submission_id=eq.${submissionId}`,
-      },
-      (payload) => onInsert(payload.new as CommentRow),
-    )
+    .channel(`comments-${eventId}`)
+    .on('broadcast', { event: 'comment' }, ({ payload }) => {
+      const row = payload as CommentRow;
+      if (row?.submission_id === submissionId) onInsert(row);
+    })
     .subscribe();
   return () => {
     sb.removeChannel(channel);

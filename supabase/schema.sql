@@ -121,7 +121,9 @@ create trigger submissions_force_approval
 -- (app/event/[slug]/actions.ts). Nobody can list the studio's clients.
 
 revoke all on public.events, public.submissions, public.comments from anon, authenticated;
-grant select on public.submissions, public.comments to anon, authenticated;
+-- (no table SELECT either: galleries and comments are read one event / one
+--  photo at a time through get_gallery / get_comments below, so nobody can
+--  list photos across all of the studio's events)
 
 drop policy if exists "events readable by anyone" on public.events;
 -- (no events policies: anon has no table privileges on events at all)
@@ -200,6 +202,67 @@ revoke execute on function public.comments_flood_guard() from public, anon, auth
 drop trigger if exists comments_flood_guard on public.comments;
 create trigger comments_flood_guard before insert on public.comments
   for each row execute function public.comments_flood_guard();
+
+-- ── per-event reads for guests ─────────────────────────────────────────
+
+create or replace function public.get_gallery(p_slug text)
+returns setof public.submissions
+language sql stable security definer set search_path = public
+as $fn$
+  select s.* from public.submissions s
+  join public.events e on e.id = s.event_id
+  where e.slug = p_slug and s.approved and public.event_gallery_open(e.id)
+  order by s.created_at desc
+  limit 2000;
+$fn$;
+revoke all on function public.get_gallery(text) from public;
+grant execute on function public.get_gallery(text) to anon, authenticated, service_role;
+
+create or replace function public.get_comments(p_submission_id uuid)
+returns setof public.comments
+language sql stable security definer set search_path = public
+as $fn$
+  select c.* from public.comments c
+  join public.submissions s on s.id = c.submission_id
+  where c.submission_id = p_submission_id
+    and s.approved and public.event_gallery_open(s.event_id)
+  order by c.created_at asc
+  limit 500;
+$fn$;
+revoke all on function public.get_comments(uuid) from public;
+grant execute on function public.get_comments(uuid) to anon, authenticated, service_role;
+
+-- ── upload links the server has issued (service role only) ──────────────
+-- finalize only accepts paths recorded here, with the media type they were
+-- issued for; abandoned ones are swept (file + row) after 3 hours.
+
+create table if not exists public.pending_uploads (
+  path text primary key,
+  event_id uuid not null references public.events(id) on delete cascade,
+  media_type text not null check (media_type in ('photo', 'video', 'boomerang', 'voice')),
+  created_at timestamptz not null default now()
+);
+create index if not exists pending_uploads_event_idx on public.pending_uploads(event_id, created_at);
+alter table public.pending_uploads enable row level security;
+revoke all on public.pending_uploads from anon, authenticated;
+
+-- cap open upload links per event (stops storage being flooded with files
+-- that are never finalized)
+create or replace function public.pending_uploads_flood_guard()
+returns trigger
+language plpgsql security definer set search_path = public
+as $fn$
+begin
+  if (select count(*) from public.pending_uploads p where p.event_id = new.event_id) >= 300 then
+    raise exception 'rate limit: too many uploads in progress for this event' using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$fn$;
+revoke execute on function public.pending_uploads_flood_guard() from public, anon, authenticated;
+drop trigger if exists pending_uploads_flood_guard on public.pending_uploads;
+create trigger pending_uploads_flood_guard before insert on public.pending_uploads
+  for each row execute function public.pending_uploads_flood_guard();
 
 -- ── storage (bucket "submissions") ──────────────────────────────────────
 -- Create the bucket first in the dashboard (Storage → New bucket):

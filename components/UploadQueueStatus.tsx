@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import {
   discardItem,
-  failedItems,
+  firstFailedItem,
   retryFailed,
   subscribeQueue,
   type QueueState,
@@ -30,18 +30,33 @@ export default function UploadQueueStatus({ tone = 'dark' }: { tone?: 'dark' | '
 
   if (!s || (s.pending === 0 && s.failed === 0 && !justFinished)) return null;
 
-  async function saveFailed() {
-    for (const it of await failedItems()) {
-      const url = URL.createObjectURL(it.blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `glancecam-${it.mediaType}.${it.ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      await discardItem(it.id);
+  // One capture per tap: iOS blocks a burst of downloads, so saving them
+  // all at once silently dropped the rest. Prefer the share sheet ("Save
+  // to Photos"); fall back to a download. Removed only once handed over.
+  async function saveNextFailed() {
+    const it = await firstFailedItem();
+    if (!it) return;
+    const name = `glancecam-${it.mediaType}.${it.ext}`;
+    const file = new File([it.blob], name, { type: it.contentType });
+    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+    try {
+      if (nav.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        await discardItem(it.id);
+        return;
+      }
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError') return; // guest closed the sheet: keep it
     }
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    await discardItem(it.id);
   }
 
   const base =
@@ -56,7 +71,9 @@ export default function UploadQueueStatus({ tone = 'dark' }: { tone?: 'dark' | '
     text =
       s.sendingId !== null
         ? `sending ${s.pending}${pct}`
-        : `${s.pending} saved on this phone · will send when the signal returns`;
+        : s.persistent
+          ? `${s.pending} saved on this phone · will send when the signal returns`
+          : `${s.pending} waiting to send · keep this page open`;
   } else {
     text = 'all sent ✓';
   }
@@ -74,8 +91,8 @@ export default function UploadQueueStatus({ tone = 'dark' }: { tone?: 'dark' | '
             <button onClick={() => retryFailed()} className="min-h-11 px-2 underline underline-offset-2">
               retry
             </button>
-            <button onClick={saveFailed} className="min-h-11 px-2 underline underline-offset-2">
-              save to phone
+            <button onClick={saveNextFailed} className="min-h-11 px-2 underline underline-offset-2">
+              save {s.failed > 1 ? 'one' : 'it'} to phone
             </button>
           </>
         )}

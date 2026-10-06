@@ -52,7 +52,19 @@ export function uploadToSignedUrl(opts: {
         resolve();
         return;
       }
-      // 400/403 here usually means the signed URL expired: get a new one
+      // Storage puts the real reason in the body: 413 too large / 415 wrong
+      // type will never succeed, so stop; an expired link (400/403) can be
+      // retried with a fresh URL.
+      let inner = 0;
+      try {
+        inner = Number(JSON.parse(xhr.responseText)?.statusCode) || 0;
+      } catch {
+        /* not JSON */
+      }
+      if (inner === 413 || inner === 415 || xhr.status === 413 || xhr.status === 415) {
+        reject(new UploadError('That file was not accepted.', inner || xhr.status, false));
+        return;
+      }
       const retriable = xhr.status === 429 || xhr.status >= 500 || xhr.status === 400 || xhr.status === 403;
       reject(new UploadError(`Upload failed (${xhr.status})`, xhr.status, retriable));
     };

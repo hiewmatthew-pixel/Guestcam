@@ -73,13 +73,10 @@ export default function EventGalleryPage() {
         setEvent(ev);
         unsub = watchSubmissions({
           eventId: ev.id,
+          // one event's approved, open photos via get_gallery(slug); the
+          // anon key can't read the submissions table directly
           load: async () => {
-            const { data, error } = await sb
-              .from('submissions')
-              .select('*')
-              .eq('event_id', ev.id)
-              .eq('approved', true)
-              .order('created_at', { ascending: false });
+            const { data, error } = await sb.rpc('get_gallery', { p_slug: slug });
             if (error) throw error;
             return (data ?? []) as SubmissionRow[];
           },
@@ -91,6 +88,7 @@ export default function EventGalleryPage() {
             setLoadError(true);
             setLoading(false);
           },
+          pollMs: 60_000, // safety net if a broadcast is missed on flaky Wi-Fi
         });
         return;
       }

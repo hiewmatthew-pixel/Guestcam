@@ -59,9 +59,14 @@ export async function fetchPublicEventBySlug(
   // One event by its exact slug via a SECURITY DEFINER function. The anon
   // key has no SELECT on events, so nobody can list the studio's clients
   // and wedding dates; you have to already know the slug (from the QR).
-  const { data, error } = await sb.rpc('get_public_event', { p_slug: slug }).maybeSingle();
-  if (error || !data) return null;
-  return toEventRow(data as PublicEvent);
+  // retry transient failures (venue Wi-Fi) so a blip doesn't read as
+  // "event not found"; a genuine miss returns null straight away
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data, error } = await sb.rpc('get_public_event', { p_slug: slug }).maybeSingle();
+    if (!error) return data ? toEventRow(data as PublicEvent) : null;
+    await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+  }
+  return null;
 }
 
 export type MediaType = 'photo' | 'video' | 'boomerang' | 'voice';
