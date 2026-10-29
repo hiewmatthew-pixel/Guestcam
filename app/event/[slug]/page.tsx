@@ -578,6 +578,12 @@ export default function EventCapturePage() {
                 see the gallery
               </Link>
             </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-ink/70">
+              By sending a capture you agree it can be shared with the couple and
+              their guests. See our{' '}
+              <Link href="/terms" className="underline underline-offset-2">terms</Link> and{' '}
+              <Link href="/privacy" className="underline underline-offset-2">privacy</Link>.
+            </p>
           </div>
         </section>
       </main>

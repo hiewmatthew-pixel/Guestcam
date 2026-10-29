@@ -28,6 +28,11 @@ export type TierFeatures = {
   // event create, the toggle still lives in the portal regardless)
   moderationQueue: boolean;
   galleryDays: number;
+  // days after the wedding when every photo, video, voice note and
+  // comment is permanently deleted (storage AND the off-site backup).
+  // Always longer than galleryDays so the couple has time to download
+  // their ZIP after guests lose access. Mirrored in supabase/schema.sql.
+  retentionDays: number;
   customBranding: boolean;
   prioritySupport: boolean;
 };
@@ -67,6 +72,7 @@ export const TIERS: Record<TierId, TierDef> = {
       'Guests save their captures to their phone',
       'Printable 4×6 QR table card',
       'Live shared gallery for 7 days',
+      'Originals kept 60 days for you to download',
       'Download all as a single ZIP',
       'Unlimited guests',
     ],
@@ -83,6 +89,7 @@ export const TIERS: Record<TierId, TierDef> = {
       photobooth: true,
       moderationQueue: false,
       galleryDays: 7,
+      retentionDays: 60,
       customBranding: false,
       prioritySupport: false,
     },
@@ -104,6 +111,7 @@ export const TIERS: Record<TierId, TierDef> = {
       'Optional "developing overnight" reveal — gallery unlocks at a time you choose',
       'Custom welcome message for guests',
       'Live shared gallery for 30 days',
+      'Originals kept 90 days for you to download',
     ],
     features: {
       filters: ALL_FILTERS,
@@ -118,6 +126,7 @@ export const TIERS: Record<TierId, TierDef> = {
       photobooth: true,
       moderationQueue: false,
       galleryDays: 30,
+      retentionDays: 90,
       customBranding: false,
       prioritySupport: false,
     },
@@ -134,6 +143,7 @@ export const TIERS: Record<TierId, TierDef> = {
       'Wedding date stamp on every capture',
       'Pre-approve every capture before guests see it (moderation queue)',
       'Live shared gallery for a full year',
+      'Originals kept 13 months for you to download',
       'No Golden Glance footer',
       'Priority same-day support',
     ],
@@ -150,6 +160,7 @@ export const TIERS: Record<TierId, TierDef> = {
       photobooth: true,
       moderationQueue: true,
       galleryDays: 365,
+      retentionDays: 395,
       customBranding: true,
       prioritySupport: true,
     },
@@ -196,4 +207,17 @@ export function isGalleryExpired(event: {
 }): boolean {
   const expires = galleryExpiresAt(event);
   return expires ? Date.now() > expires.getTime() : false;
+}
+
+/**
+ * When everything captured at this event is permanently deleted:
+ * wedding_date + the tier's retentionDays (start of that day, UTC, the
+ * same moment the daily lifecycle job uses). Null if the date can't be
+ * parsed.
+ */
+export function mediaDeletesAt(event: { tier: string; wedding_date: string }): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(event.wedding_date);
+  if (!m) return null;
+  const days = getTier(event.tier).features.retentionDays;
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + days));
 }

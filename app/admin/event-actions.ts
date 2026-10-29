@@ -9,6 +9,7 @@ import {
   isUuid,
   notifyModerationChange,
 } from '@/lib/supabase-admin';
+import { deleteEventBackup } from '@/lib/lifecycle';
 import { generateManageToken } from '@/lib/tokens';
 import { cleanString, LIMITS, toSlug, ValidationError } from '@/lib/validate';
 import { TIER_LIST, DEFAULT_TIER, getTier, type TierId } from '@/lib/tiers';
@@ -142,6 +143,7 @@ export async function deleteEventAction(
     const sb = getSupabaseAdmin()!;
     // the bucket is public, so remove the files too, not just the rows
     await deleteEventMedia(id);
+    await deleteEventBackup(id).catch(() => false);
     await sb.from('submissions').delete().eq('event_id', id);
     const { error } = await sb.from('events').delete().eq('id', id);
     if (error) return { ok: false, error: 'Could not delete event.' };

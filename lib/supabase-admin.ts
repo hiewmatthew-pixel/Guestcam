@@ -47,15 +47,20 @@ export async function notifyModerationChange(eventId: string): Promise<void> {
   }
 }
 
-/** Remove every stored file under an event's folder in the submissions bucket. */
-export async function deleteEventMedia(eventId: string): Promise<void> {
+/**
+ * Remove every stored file under an event's folder in the submissions
+ * bucket. True when the folder is empty afterwards.
+ */
+export async function deleteEventMedia(eventId: string): Promise<boolean> {
   const sb = getSupabaseAdmin();
-  if (!sb) return;
+  if (!sb) return false;
   const bucket = sb.storage.from('submissions');
   for (let guard = 0; guard < 200; guard++) {
     const { data, error } = await bucket.list(eventId, { limit: 1000 });
-    if (error || !data || data.length === 0) return;
+    if (error || !data) return false;
+    if (data.length === 0) return true;
     const { error: rmErr } = await bucket.remove(data.map((f) => `${eventId}/${f.name}`));
-    if (rmErr) return;
+    if (rmErr) return false;
   }
+  return false;
 }

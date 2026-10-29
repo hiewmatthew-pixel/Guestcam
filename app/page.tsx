@@ -57,6 +57,9 @@ export default function MarketingPage() {
         <a href={mailto('GlanceCam inquiry')} className="underline underline-offset-4 decoration-ink/40 hover:decoration-ink">
           {CONTACT_EMAIL}
         </a>
+        <br />
+        <Link href="/terms" className="inline-flex min-h-11 items-center px-2 hover:text-ink">terms</Link>·
+        <Link href="/privacy" className="inline-flex min-h-11 items-center px-2 hover:text-ink">privacy</Link>
       </footer>
     </main>
   );

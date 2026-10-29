@@ -24,7 +24,7 @@ import {
 } from '@/lib/supabase';
 import { extensionFor } from '@/lib/media';
 import { CONTACT_EMAIL, mailto } from '@/lib/contact';
-import { getTier } from '@/lib/tiers';
+import { getTier, mediaDeletesAt } from '@/lib/tiers';
 import { formatWeddingDate } from '@/lib/dates';
 import { constantTimeEqual, LIMITS, safeFilenamePart } from '@/lib/validate';
 import {
@@ -379,6 +379,7 @@ export default function CouplePortalPage() {
             >
               {downloading ? 'preparing zip…' : 'download all as zip'}
             </button>
+            {event && <RetentionNote event={event} />}
 
             <button
               type="button"
@@ -482,6 +483,9 @@ export default function CouplePortalPage() {
         <a href={mailto('GlanceCam portal help')} className="underline underline-offset-4 decoration-ink/40 hover:decoration-ink normal-case tracking-normal">
           {CONTACT_EMAIL}
         </a>
+        <br />
+        <Link href="/terms" className="inline-flex min-h-11 items-center px-2 hover:text-ink">terms</Link>·
+        <Link href="/privacy" className="inline-flex min-h-11 items-center px-2 hover:text-ink">privacy</Link>
       </footer>
     </main>
   );
@@ -528,5 +532,28 @@ function AutoApproveSwitch({
         />
       </span>
     </button>
+  );
+}
+
+/** When the originals are permanently deleted, so the couple downloads in time. */
+function RetentionNote({ event }: { event: EventRow }) {
+  const at = mediaDeletesAt(event);
+  if (!at) return null;
+  const ymd = at.toISOString().slice(0, 10);
+  const label = formatWeddingDate(ymd, 'long');
+  const daysLeft = Math.ceil((at.getTime() - Date.now()) / 86_400_000);
+  if (daysLeft <= 0) {
+    return (
+      <p className="mt-2 text-[11px] text-ink/70 max-w-xs">
+        Your originals were permanently deleted on {label}, as set out in our{' '}
+        <Link href="/privacy" className="underline underline-offset-2">privacy policy</Link>.
+      </p>
+    );
+  }
+  return (
+    <p className={`mt-2 text-[11px] max-w-xs ${daysLeft <= 14 ? 'text-gold-deep font-medium' : 'text-ink/70'}`}>
+      Download your ZIP before {label}. After that every photo, film and voice
+      note is permanently deleted{daysLeft <= 14 ? ` — ${daysLeft} day${daysLeft === 1 ? '' : 's'} left` : ''}.
+    </p>
   );
 }

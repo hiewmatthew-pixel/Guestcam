@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getTier, galleryExpiresAt, isGalleryExpired, TIERS } from '../tiers';
+import { getTier, galleryExpiresAt, isGalleryExpired, mediaDeletesAt, TIER_LIST, TIERS } from '../tiers';
 
 describe('getTier', () => {
   it('returns the matching tier', () => {
@@ -52,5 +52,17 @@ describe('gallery expiry', () => {
     const dayMs = 24 * 60 * 60 * 1000;
     const glimpseDays = (glimpse.getTime() - new Date(wedding).getTime()) / dayMs;
     expect(Math.round(glimpseDays)).toBe(TIERS.glimpse.features.galleryDays + 1);
+  });
+});
+
+describe('mediaDeletesAt', () => {
+  it('deletes after each tier’s retention, always after the gallery closes', () => {
+    expect(mediaDeletesAt({ tier: 'glimpse', wedding_date: '2026-06-20' })?.toISOString()).toBe('2026-08-19T00:00:00.000Z');
+    expect(mediaDeletesAt({ tier: 'signature', wedding_date: '2026-06-20' })?.toISOString()).toBe('2026-09-18T00:00:00.000Z');
+    expect(mediaDeletesAt({ tier: 'studio', wedding_date: '2026-06-20' })?.toISOString()).toBe('2027-07-20T00:00:00.000Z');
+    for (const t of TIER_LIST) expect(t.features.retentionDays).toBeGreaterThan(t.features.galleryDays + 14);
+  });
+  it('returns null for a bad date', () => {
+    expect(mediaDeletesAt({ tier: 'glimpse', wedding_date: 'nope' })).toBeNull();
   });
 });

@@ -22,7 +22,7 @@ const FAQ = [
   },
   {
     q: 'how long do you keep the gallery up?',
-    a: 'Glimpse keeps it shared for 7 days. Signature for 30. Studio for a full year. Everything is also yours to download as a single ZIP at any point.',
+    a: 'Glimpse keeps it shared for 7 days. Signature for 30. Studio for a full year. You can download everything as a single ZIP at any point. The originals are then permanently deleted 60 days (Glimpse), 90 days (Signature) or 13 months (Studio) after the wedding, and your portal shows the date.',
   },
   {
     q: 'is the price per guest, or one flat fee?',
@@ -159,6 +159,9 @@ export default function PricingPage() {
         <a href={`mailto:${INQUIRY_EMAIL}`} className="underline underline-offset-4 decoration-ink/40 hover:decoration-ink">
           {INQUIRY_EMAIL}
         </a>
+        <br />
+        <Link href="/terms" className="inline-flex min-h-11 items-center px-2 hover:text-ink">terms</Link>·
+        <Link href="/privacy" className="inline-flex min-h-11 items-center px-2 hover:text-ink">privacy</Link>
       </footer>
     </main>
   );

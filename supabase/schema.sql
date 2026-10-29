@@ -264,6 +264,19 @@ drop trigger if exists pending_uploads_flood_guard on public.pending_uploads;
 create trigger pending_uploads_flood_guard before insert on public.pending_uploads
   for each row execute function public.pending_uploads_flood_guard();
 
+-- ── retention + off-site backup (service role only) ─────────────────────
+-- A daily job (app/api/cron/lifecycle) permanently deletes an event's
+-- media, submissions and comments once wedding_date + the tier's
+-- retention passes (lib/tiers.ts retentionDays: glimpse 60, signature 90,
+-- studio 395), then stamps purged_at. The event row itself stays as a
+-- minimal booking record. An hourly job (app/api/cron/backup) copies each
+-- new file to a private Vercel Blob store and stamps backed_up_at.
+
+alter table public.events add column if not exists purged_at timestamptz;
+alter table public.submissions add column if not exists backed_up_at timestamptz;
+create index if not exists submissions_backup_idx on public.submissions(created_at)
+  where backed_up_at is null;
+
 -- ── storage (bucket "submissions") ──────────────────────────────────────
 -- Create the bucket first in the dashboard (Storage → New bucket):
 --   name submissions · public ON · 30 MB limit · MIME types

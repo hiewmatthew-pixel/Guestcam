@@ -112,10 +112,32 @@ app in demo mode, or with the CSP blocking Supabase.
 - **Rate limiting** is in-memory per serverless instance, so it's best-effort
   on Vercel. That's fine for a soft launch. Back it with Upstash Redis
   before going public.
-- **Expired galleries** are hidden from guests, but files are not deleted from
-  storage yet. Add a cleanup job before storage costs matter.
+- **Firewall** (Vercel → Firewall → Rules): rate-limit POST to 600/min per IP (deny for 5 minutes).
+  Venues share one Wi-Fi IP, so do not set it much lower.
 - **Free Supabase tier** = 1 GB storage ≈ 250 videos. One busy wedding can fill
   it, so upgrade to Pro before a real event.
+
+## Backup and automatic deletion
+Two Vercel Cron jobs (`vercel.json`), both authenticated with the
+`CRON_SECRET` env var:
+
+- **`/api/cron/backup`, hourly**: copies every new original to the private
+  Vercel Blob store `glancecam-backup` (Montréal, `BLOB_READ_WRITE_TOKEN`)
+  and stamps `submissions.backed_up_at`. To restore, browse the store
+  under Vercel → Storage; paths match the Supabase bucket (`submissions/<event id>/…`).
+- **`/api/cron/lifecycle`, daily at 08:43 UTC**: permanently deletes an event's
+  files (Supabase and backup), submissions and comments once
+  `wedding_date + retentionDays` passes, then stamps `events.purged_at`.
+
+| tier | guest gallery | deleted after |
+|---|---|---|
+| Glimpse | 7 days | 60 days |
+| Signature | 30 days | 90 days |
+| Studio | 365 days | 395 days (13 months) |
+
+The couple portal shows the deletion date and turns gold in the last 14 days.
+Change retention in `lib/tiers.ts` (`retentionDays`). The privacy page
+reads the same values. Run history is under Vercel → Settings → Cron Jobs.
 
 ## Payments and contact
 There's no checkout in the app on purpose. Quotes and invoices go out through
@@ -124,6 +146,6 @@ There's no checkout in the app on purpose. Quotes and invoices go out through
 books, create their event in `/admin` and send them the QR and portal link.
 
 ## Not built yet (optional before going public)
-Terms / Privacy / refund policy pages, error monitoring (Sentry) and
-analytics, a storage cleanup job for expired galleries, and Upstash-backed
-rate limiting.
+Error monitoring (Sentry), analytics, gallery thumbnails, and
+Upstash-backed rate limiting. `/terms` and `/privacy` are general templates
+for a Canadian (Ontario, PIPEDA) business; have a lawyer review them.
