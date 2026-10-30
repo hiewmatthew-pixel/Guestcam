@@ -129,6 +129,64 @@ export async function createEventAction(
   }
 }
 
+export type UpdateInput = {
+  id: string;
+  couple_names: string;
+  wedding_date: string; // YYYY-MM-DD
+  welcome_message?: string | null;
+  tier?: string;
+  reveal_at?: string | null; // ISO timestamp; null clears the reveal lock
+};
+
+/**
+ * Edit an existing event (names, date, package, reveal time, welcome note).
+ * The slug and the couple's portal link never change, so printed QR cards
+ * and links already sent keep working. Gallery close, capture window and
+ * deletion dates all derive from wedding_date + tier, so they follow.
+ */
+export async function updateEventAction(
+  input: UpdateInput,
+): Promise<{ ok: true; event: EventRow } | { ok: false; error: string }> {
+  try {
+    await requireAdmin();
+    if (!isSupabaseAdminConfigured) {
+      return { ok: false, error: 'Supabase service role key is not configured on the server.' };
+    }
+    if (!isUuid(input.id)) return { ok: false, error: 'Bad event id.' };
+
+    const couple_names = cleanString(input.couple_names, LIMITS.COUPLE_NAMES);
+    const welcome_message =
+      input.welcome_message ? cleanString(input.welcome_message, LIMITS.WELCOME_MESSAGE) || null : null;
+    const wedding_date = String(input.wedding_date || '');
+    const tier = validTier(input.tier);
+    if (!couple_names) throw new ValidationError('Couple names are required.');
+    if (!isValidDate(wedding_date)) throw new ValidationError('Wedding date is invalid.');
+
+    let reveal_at: string | null = null;
+    if (input.reveal_at && getTier(tier).features.revealMode) {
+      const ts = new Date(input.reveal_at);
+      if (Number.isNaN(ts.getTime())) throw new ValidationError('Reveal time is invalid.');
+      reveal_at = ts.toISOString();
+    }
+
+    const patch: Record<string, unknown> = { couple_names, wedding_date, welcome_message, tier, reveal_at };
+    // a package without the moderation queue can't leave captures waiting
+    if (!getTier(tier).features.moderationQueue) patch.auto_approve = true;
+
+    const sb = getSupabaseAdmin()!;
+    const { data, error } = await sb.from('events').update(patch).eq('id', input.id).select('*').maybeSingle();
+    if (error || !data) return { ok: false, error: 'Could not save the event.' };
+    // open galleries / TV screens reload with the new reveal time and dates
+    await notifyModerationChange(input.id);
+    revalidatePath('/admin');
+    return { ok: true, event: data as EventRow };
+  } catch (e: any) {
+    if (e instanceof ValidationError) return { ok: false, error: e.message };
+    if (e?.message === 'Not authorized.') return { ok: false, error: 'Not authorized.' };
+    return { ok: false, error: 'Could not save the event.' };
+  }
+}
+
 export async function deleteEventAction(
   id: string,
 ): Promise<{ ok: boolean; error?: string }> {

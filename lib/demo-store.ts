@@ -88,7 +88,12 @@ export function createEvent(input: {
 
 export function updateEvent(
   id: string,
-  patch: Partial<Pick<EventRow, 'welcome_message' | 'manage_token' | 'auto_approve' | 'reveal_at'>>,
+  patch: Partial<
+    Pick<
+      EventRow,
+      'welcome_message' | 'manage_token' | 'auto_approve' | 'reveal_at' | 'couple_names' | 'wedding_date' | 'tier'
+    >
+  >,
 ): EventRow | null {
   const events = listEvents();
   const idx = events.findIndex((e) => e.id === id);

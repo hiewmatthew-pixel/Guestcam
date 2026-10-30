@@ -12,8 +12,7 @@ export default async function AdminEventPage({ params }: { params: { slug: strin
       <header className="px-6 pt-8 flex items-center gap-3">
         <Link
           href="/"
-          aria-label="back to home"
-          className="flex items-center gap-3 group"
+          className="flex items-center gap-3 min-h-11 group"
         >
           <Logo className="h-5 w-8 text-ink" />
           <span className="text-[11px] tracking-widest uppercase text-ink/70 group-hover:text-ink transition-colors">

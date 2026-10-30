@@ -13,6 +13,7 @@ import {
   rotateManageToken,
   setSubmissionApproval,
   subscribeToSubmissions,
+  updateEvent,
 } from '@/lib/demo-store';
 import {
   getSupabase,
@@ -28,7 +29,9 @@ import {
   adminListSubmissionsAction,
   adminSetSubmissionApprovedAction,
   rotateTokenAction,
+  updateEventAction,
 } from '../event-actions';
+import EditEventForm, { type EventPatch } from './EditEventForm';
 
 type Props = { slug: string };
 
@@ -38,6 +41,8 @@ export default function AdminEventDetail({ slug }: Props) {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [origin, setOrigin] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -127,6 +132,25 @@ export default function AdminEventDetail({ slug }: Props) {
     }
   }
 
+  /** Returns an error message, or null once saved. */
+  async function handleSaveEvent(patch: EventPatch): Promise<string | null> {
+    if (!event) return 'Event not loaded.';
+    const local = getEventBySlug(slug);
+    if (local) {
+      const updated = updateEvent(local.id, patch);
+      if (!updated) return 'Could not save the event.';
+      setEvent(updated);
+    } else {
+      const res = await updateEventAction({ id: event.id, ...patch });
+      if (!res.ok) return res.error;
+      setEvent(res.event);
+    }
+    setEditing(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+    return null;
+  }
+
   async function handleSetApproved(submissionId: string, approved: boolean) {
     const prev = items;
     setItems((cur) =>
@@ -205,6 +229,32 @@ export default function AdminEventDetail({ slug }: Props) {
             ? 'all filters'
             : `${tier.features.filters.length} filters`}
         </p>
+        {event.reveal_at && tier.features.revealMode && (
+          <p className="mt-3 text-[11px] text-ink/70">
+            gallery reveals{' '}
+            {new Date(event.reveal_at).toLocaleString(undefined, {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            })}
+          </p>
+        )}
+        <div className="mt-4 flex items-center gap-4">
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="min-h-11 text-[10px] uppercase tracking-widest"
+            >
+              <span className="border-b border-gold pb-0.5">edit event details</span>
+            </button>
+          )}
+          <span role="status" className="font-serif italic text-ink/70 text-sm">
+            {saved ? 'saved ✦' : ''}
+          </span>
+        </div>
+        {editing && (
+          <EditEventForm event={event} onSave={handleSaveEvent} onCancel={() => setEditing(false)} />
+        )}
       </header>
 
       <div className="mt-10 grid md:grid-cols-2 gap-10 items-start">
