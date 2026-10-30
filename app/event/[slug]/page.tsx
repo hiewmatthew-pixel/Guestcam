@@ -467,7 +467,7 @@ export default function EventCapturePage() {
         <header className="px-6 pt-8 short:pt-3 flex items-center gap-3">
           <Link
             href="/"
-            className="flex items-center gap-3 group"
+            className="flex min-h-11 items-center gap-3 group"
           >
             <Logo className="h-5 w-8 text-ink" />
             <span className="text-[11px] tracking-widest uppercase text-ink/70 group-hover:text-ink transition-colors">
@@ -597,7 +597,7 @@ export default function EventCapturePage() {
         <header className="px-6 pt-6 flex items-center justify-between">
           <button
             onClick={retake}
-            className="text-[10px] uppercase tracking-widest text-cream/80"
+            className="-ml-2 min-h-11 px-2 text-[10px] uppercase tracking-widest text-cream/80"
           >
             ← retake
           </button>
@@ -649,6 +649,7 @@ export default function EventCapturePage() {
         </div>
 
         <div className="px-6 pb-6 pt-3 short:sticky short:bottom-0 short:z-10 short:bg-ink short:pb-2 short:pt-2 short:border-t short:border-cream/10">
+          <div className="mx-auto w-full max-w-md">
           {submittedOk ? (
             <div role="status" aria-live="polite" className="text-center">
               <p className="font-serif italic text-2xl text-gold-soft">Sent to the couple ✦</p>
@@ -681,6 +682,7 @@ export default function EventCapturePage() {
               </button>
             </>
           )}
+          </div>
         </div>
       </main>
     );
@@ -810,7 +812,7 @@ export default function EventCapturePage() {
               step={1}
               value={Math.round(filterStrength * 100)}
               onChange={(e) => setFilterStrength(Number(e.target.value) / 100)}
-              className="flex-1 accent-gold h-1"
+              className="flex-1 accent-gold h-11 cursor-pointer"
               aria-label="filter strength"
             />
             <span className="text-[10px] uppercase tracking-widest text-cream/65 tabular-nums w-8 text-right">
@@ -924,7 +926,7 @@ export default function EventCapturePage() {
           <div className="flex justify-end">
             <Link
               href={`/event/${slug}/gallery`}
-              className="text-[10px] uppercase tracking-widest text-cream/60"
+              className="-mr-2 inline-flex min-h-11 items-center px-2 text-[10px] uppercase tracking-widest text-cream/60"
             >
               gallery
             </Link>

@@ -301,7 +301,7 @@ export default function AdminEventDetail({ slug }: Props) {
             href={`/event/${slug}/qr`}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-4 inline-block text-[10px] uppercase tracking-widest text-ink/70 underline decoration-gold/60 underline-offset-4 hover:text-ink"
+            className="mt-2 inline-flex min-h-11 items-center text-[10px] uppercase tracking-widest text-ink/70 underline decoration-gold/60 underline-offset-4 hover:text-ink"
           >
             open print-ready 4×6 table card
           </a>

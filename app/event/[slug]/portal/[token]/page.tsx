@@ -487,7 +487,7 @@ export default function CouplePortalPage() {
         private link · share only with people you want in your gallery
         <br />
         questions?{' '}
-        <a href={mailto('GlanceCam portal help')} className="underline underline-offset-4 decoration-ink/40 hover:decoration-ink normal-case tracking-normal">
+        <a href={mailto('GlanceCam portal help')} className="inline-flex min-h-11 items-center underline underline-offset-4 decoration-ink/40 hover:decoration-ink normal-case tracking-normal">
           {CONTACT_EMAIL}
         </a>
         <br />

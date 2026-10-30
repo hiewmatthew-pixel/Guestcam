@@ -156,7 +156,7 @@ export default function PricingPage() {
 
       <footer className="px-6 py-8 text-center text-[10px] tracking-widest uppercase text-ink/70 border-t border-warm-gray-light">
         Crafted in Toronto ·{' '}
-        <a href={`mailto:${INQUIRY_EMAIL}`} className="underline underline-offset-4 decoration-ink/40 hover:decoration-ink">
+        <a href={`mailto:${INQUIRY_EMAIL}`} className="inline-flex min-h-11 items-center underline underline-offset-4 decoration-ink/40 hover:decoration-ink">
           {INQUIRY_EMAIL}
         </a>
         <br />

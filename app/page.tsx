@@ -54,7 +54,7 @@ export default function MarketingPage() {
 
       <footer className="px-6 py-6 text-center text-[10px] tracking-widest uppercase text-ink/70">
         Crafted in Toronto ·{' '}
-        <a href={mailto('GlanceCam inquiry')} className="underline underline-offset-4 decoration-ink/40 hover:decoration-ink">
+        <a href={mailto('GlanceCam inquiry')} className="inline-flex min-h-11 items-center underline underline-offset-4 decoration-ink/40 hover:decoration-ink">
           {CONTACT_EMAIL}
         </a>
         <br />

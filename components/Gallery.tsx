@@ -288,7 +288,7 @@ export default function Gallery({
           </p>
         </div>
       ) : (
-        <div className="columns-2 sm:columns-3 md:columns-4 gap-3 px-3 pt-3">
+        <div className="columns-2 sm:columns-3 md:columns-4 xl:columns-5 2xl:columns-6 gap-3 px-3 pt-3 max-w-[2200px] mx-auto">
           {filtered.map((it) => (
             <Tile
               key={it.id}
