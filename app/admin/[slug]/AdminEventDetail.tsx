@@ -21,7 +21,7 @@ import {
   type EventRow,
   type SubmissionRow,
 } from '@/lib/supabase';
-import { formatPriceCAD, getTier } from '@/lib/tiers';
+import { eventKeyDates, formatDay, formatDayTime, formatPriceCAD, getTier } from '@/lib/tiers';
 import { safeFilenamePart } from '@/lib/validate';
 import { formatWeddingDate } from '@/lib/dates';
 import {
@@ -96,6 +96,36 @@ export default function AdminEventDetail({ slug }: Props) {
     [origin, slug, event],
   );
   const tier = useMemo(() => getTier(event?.tier), [event]);
+
+  // ready-to-paste note for the couple: their private link plus the dates
+  // that matter (matches the "your dates" panel in their portal)
+  const coupleMessage = useMemo(() => {
+    if (!event || !portalUrl) return '';
+    const d = eventKeyDates(event);
+    const lines = [
+      `Hi ${event.couple_names},`,
+      '',
+      'Here is your private GlanceCam portal. It has your guest QR code, your live gallery and a download-everything button:',
+      portalUrl,
+      '',
+      'Your guest camera link (this is what the QR code opens):',
+      captureUrl,
+    ];
+    if (d) {
+      lines.push(
+        '',
+        'Your dates:',
+        `• Guest link opens: ${formatDay(d.cameraOpens)} (two weeks early, so you can test it)`,
+      );
+      if (d.revealAt) lines.push(`• Gallery reveals to guests: ${formatDayTime(d.revealAt)}`);
+      lines.push(
+        `• Guest gallery open until: ${formatDay(d.galleryLastDay)}`,
+        `• Download your originals by: ${formatDay(d.downloadBy)} (after that everything is permanently deleted)`,
+      );
+    }
+    lines.push('', 'Please keep the portal link private. Anyone with it can manage your gallery.');
+    return lines.join('\n');
+  }, [event, portalUrl, captureUrl]);
 
   const [copied, setCopied] = useState<string | null>(null);
   async function copy(kind: string, value: string) {
@@ -364,6 +394,15 @@ export default function AdminEventDetail({ slug }: Props) {
               </button>
               <button
                 type="button"
+                onClick={() => copy('message', coupleMessage)}
+                className="min-h-11 text-[10px] uppercase tracking-widest"
+              >
+                <span className="border-b border-gold pb-0.5">
+                  {copied === 'message' ? 'copied ✦' : 'copy message with dates'}
+                </span>
+              </button>
+              <button
+                type="button"
                 onClick={handleRotateToken}
                 className="min-h-11 text-[10px] uppercase tracking-widest text-ink/70 hover:text-ink"
               >
@@ -371,8 +410,9 @@ export default function AdminEventDetail({ slug }: Props) {
               </button>
             </div>
             <p className="mt-3 text-[11px] text-ink/70 leading-relaxed">
-              Paste this into your reply email or text. Anyone with this link can
-              view and download — share it carefully.
+              “Copy message with dates” gives you a ready-to-send note with both links,
+              when the guest link opens, when the gallery closes and the download
+              deadline. Anyone with this link can view and download, so share it carefully.
             </p>
           </div>
         </div>

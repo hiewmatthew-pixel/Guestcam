@@ -81,6 +81,7 @@ export default function AdminEventList() {
           wedding_date: weddingDate,
           welcome_message: welcome.trim() || null,
           tier,
+          reveal_at: getTier(tier).features.revealMode ? revealIso : null,
         });
       } else {
         const res = await createEventAction({

@@ -7,7 +7,7 @@
 
 import { useMemo, useState } from 'react';
 import type { EventRow } from '@/lib/supabase';
-import { TIER_LIST, formatPriceCAD, galleryExpiresAt, getTier, mediaDeletesAt, type TierId } from '@/lib/tiers';
+import { TIER_LIST, eventKeyDates, formatDay, formatPriceCAD, getTier, type TierId } from '@/lib/tiers';
 import { formatWeddingDate, parseWeddingDate } from '@/lib/dates';
 import { LIMITS } from '@/lib/validate';
 
@@ -23,10 +23,6 @@ function toLocalInput(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function dayLabel(d: Date | null): string {
-  if (!d) return '—';
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-}
 
 export type EventPatch = {
   couple_names: string;
@@ -58,16 +54,10 @@ export default function EditEventForm({
   const dateChanged = weddingDate !== event.wedding_date;
   const tierChanged = tier !== getTier(event.tier).id;
 
-  const preview = useMemo(() => {
-    if (!dateOk) return null;
-    const opens = parseWeddingDate(weddingDate)!;
-    opens.setDate(opens.getDate() - 14);
-    return {
-      opens,
-      closes: galleryExpiresAt({ tier, wedding_date: weddingDate }),
-      deletes: mediaDeletesAt({ tier, wedding_date: weddingDate }),
-    };
-  }, [tier, weddingDate, dateOk]);
+  const preview = useMemo(
+    () => (dateOk ? eventKeyDates({ tier, wedding_date: weddingDate }) : null),
+    [tier, weddingDate, dateOk],
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -75,8 +65,8 @@ export default function EditEventForm({
     if (!coupleNames.trim()) return setErr('Couple names are required.');
     if (!dateOk) return setErr('Choose a valid wedding date.');
     if (
-      preview?.deletes &&
-      preview.deletes.getTime() < Date.now() &&
+      preview &&
+      preview.downloadBy.getTime() + 86_400_000 < Date.now() &&
       !confirm(
         'With this date and package the deletion date is already in the past, so tonight’s cleanup will permanently delete every capture for this event. Save anyway?',
       )
@@ -193,16 +183,16 @@ export default function EditEventForm({
       {preview && (
         <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-3 text-sm border-t border-warm-gray-light pt-4">
           <div>
-            <dt className="text-[10px] uppercase tracking-widest text-ink/70">camera opens</dt>
-            <dd className="mt-1">{dayLabel(preview.opens)}</dd>
+            <dt className="text-[10px] uppercase tracking-widest text-ink/70">guest link opens</dt>
+            <dd className="mt-1">{formatDay(preview.cameraOpens)}</dd>
           </div>
           <div>
-            <dt className="text-[10px] uppercase tracking-widest text-ink/70">guest gallery closes</dt>
-            <dd className="mt-1">{dayLabel(preview.closes)}</dd>
+            <dt className="text-[10px] uppercase tracking-widest text-ink/70">gallery open until</dt>
+            <dd className="mt-1">{formatDay(preview.galleryLastDay)}</dd>
           </div>
           <div>
-            <dt className="text-[10px] uppercase tracking-widest text-ink/70">everything deleted</dt>
-            <dd className="mt-1">{dayLabel(preview.deletes)}</dd>
+            <dt className="text-[10px] uppercase tracking-widest text-ink/70">download by</dt>
+            <dd className="mt-1">{formatDay(preview.downloadBy)}</dd>
           </div>
         </dl>
       )}

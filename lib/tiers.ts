@@ -221,3 +221,48 @@ export function mediaDeletesAt(event: { tier: string; wedding_date: string }): D
   const days = getTier(event.tier).features.retentionDays;
   return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + days));
 }
+
+export type EventKeyDates = {
+  cameraOpens: Date; // guest link starts accepting captures
+  revealAt: Date | null; // guest gallery unlocks (reveal tiers only)
+  galleryLastDay: Date; // last full day guests can view the gallery
+  downloadBy: Date; // last day before originals are permanently deleted
+};
+
+/**
+ * The dates a couple needs, as local calendar days. Mirrors the server:
+ * captures from two weeks before the wedding (lib/guest-writes.ts), the
+ * guest gallery through wedding + galleryDays (galleryExpiresAt), and
+ * deletion at wedding + retentionDays (mediaDeletesAt).
+ */
+export function eventKeyDates(event: {
+  tier: string;
+  wedding_date: string;
+  reveal_at?: string | null;
+}): EventKeyDates | null {
+  const wedding = parseWeddingDate(event.wedding_date);
+  const expires = galleryExpiresAt(event);
+  const deletes = mediaDeletesAt(event);
+  if (!wedding || !expires || !deletes) return null;
+  const day = (base: Date, offset: number) => {
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+    d.setDate(d.getDate() + offset);
+    return d;
+  };
+  const reveal = event.reveal_at && getTier(event.tier).features.revealMode ? new Date(event.reveal_at) : null;
+  return {
+    cameraOpens: day(wedding, -14),
+    revealAt: reveal && !Number.isNaN(reveal.getTime()) ? reveal : null,
+    galleryLastDay: day(expires, -1),
+    // deletes is midnight UTC; the day before is safe in every Canadian zone
+    downloadBy: day(new Date(deletes.getUTCFullYear(), deletes.getUTCMonth(), deletes.getUTCDate()), -1),
+  };
+}
+
+export function formatDay(d: Date): string {
+  return d.toLocaleDateString('en-CA', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+export function formatDayTime(d: Date): string {
+  return d.toLocaleString('en-CA', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}

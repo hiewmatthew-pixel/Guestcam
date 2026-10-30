@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getTier, galleryExpiresAt, isGalleryExpired, mediaDeletesAt, TIER_LIST, TIERS } from '../tiers';
+import { getTier, galleryExpiresAt, isGalleryExpired, mediaDeletesAt, eventKeyDates, TIER_LIST, TIERS } from '../tiers';
 
 describe('getTier', () => {
   it('returns the matching tier', () => {
@@ -64,5 +64,20 @@ describe('mediaDeletesAt', () => {
   });
   it('returns null for a bad date', () => {
     expect(mediaDeletesAt({ tier: 'glimpse', wedding_date: 'nope' })).toBeNull();
+  });
+});
+
+describe('eventKeyDates', () => {
+  it('gives the couple-facing calendar days', () => {
+    const d = eventKeyDates({ tier: 'glimpse', wedding_date: '2026-06-20' })!;
+    const ymd = (x: Date) => `${x.getFullYear()}-${x.getMonth() + 1}-${x.getDate()}`;
+    expect(ymd(d.cameraOpens)).toBe('2026-6-6');
+    expect(ymd(d.galleryLastDay)).toBe('2026-6-27');
+    expect(ymd(d.downloadBy)).toBe('2026-8-18');
+    expect(d.revealAt).toBeNull();
+  });
+  it('only reports a reveal time on tiers that have it', () => {
+    expect(eventKeyDates({ tier: 'glimpse', wedding_date: '2026-06-20', reveal_at: '2026-06-21T14:00:00Z' })!.revealAt).toBeNull();
+    expect(eventKeyDates({ tier: 'studio', wedding_date: '2026-06-20', reveal_at: '2026-06-21T14:00:00Z' })!.revealAt).not.toBeNull();
   });
 });

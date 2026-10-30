@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import QRCode from '@/components/QRCode';
+import KeyDates from '@/components/KeyDates';
 import Gallery from '@/components/Gallery';
 import {
   getEventBySlug,
@@ -24,7 +25,7 @@ import {
 } from '@/lib/supabase';
 import { extensionFor } from '@/lib/media';
 import { CONTACT_EMAIL, mailto } from '@/lib/contact';
-import { getTier, mediaDeletesAt } from '@/lib/tiers';
+import { eventKeyDates, formatDay, getTier } from '@/lib/tiers';
 import { formatWeddingDate } from '@/lib/dates';
 import { constantTimeEqual, LIMITS, safeFilenamePart } from '@/lib/validate';
 import {
@@ -322,6 +323,12 @@ export default function CouplePortalPage() {
         </p>
       </section>
 
+      {event && (
+        <div className="px-6 pb-4">
+          <KeyDates event={event} className="max-w-3xl mx-auto border-y border-warm-gray-light py-8" />
+        </div>
+      )}
+
       {/* QR card */}
       <section className="px-6 py-10">
         <div className="max-w-3xl mx-auto grid md:grid-cols-2 gap-10 items-start">
@@ -537,22 +544,24 @@ function AutoApproveSwitch({
 
 /** When the originals are permanently deleted, so the couple downloads in time. */
 function RetentionNote({ event }: { event: EventRow }) {
-  const at = mediaDeletesAt(event);
-  if (!at) return null;
-  const ymd = at.toISOString().slice(0, 10);
-  const label = formatWeddingDate(ymd, 'long');
-  const daysLeft = Math.ceil((at.getTime() - Date.now()) / 86_400_000);
+  const d = eventKeyDates(event);
+  if (!d) return null;
+  const label = formatDay(d.downloadBy);
+  const daysLeft = Math.ceil(
+    (new Date(d.downloadBy.getFullYear(), d.downloadBy.getMonth(), d.downloadBy.getDate() + 1).getTime() - Date.now()) /
+      86_400_000,
+  );
   if (daysLeft <= 0) {
     return (
       <p className="mt-2 text-[11px] text-ink/70 max-w-xs">
-        Your originals were permanently deleted on {label}, as set out in our{' '}
+        Your originals have been permanently deleted, as set out in our{' '}
         <Link href="/privacy" className="underline underline-offset-2">privacy policy</Link>.
       </p>
     );
   }
   return (
     <p className={`mt-2 text-[11px] max-w-xs ${daysLeft <= 14 ? 'text-gold-deep font-medium' : 'text-ink/70'}`}>
-      Download your ZIP before {label}. After that every photo, film and voice
+      Download your ZIP by {label}. After that every photo, film and voice
       note is permanently deleted{daysLeft <= 14 ? ` — ${daysLeft} day${daysLeft === 1 ? '' : 's'} left` : ''}.
     </p>
   );
