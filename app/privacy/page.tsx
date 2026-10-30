@@ -39,8 +39,19 @@ export default function PrivacyPage() {
       <p className="mt-3">
         <strong>Automatically:</strong> your IP address and basic request details, used briefly to
         block spam and abuse and kept in our hosting provider’s logs for a short period. We use no
-        advertising or tracking cookies and no analytics that identify you. Your phone stores your
-        name and any captures still waiting to send, only on your device, until they upload.
+        advertising cookies. Your phone stores your name and any captures still waiting to send,
+        only on your device, until they upload.
+      </p>
+
+      <H2 id="analytics">Website analytics (optional)</H2>
+      <p>
+        On our public pages only (home, pricing, terms and this page) we ask whether we may use
+        Google Analytics. If you accept, Google sets cookies that tell us how visitors find and use
+        those pages, such as pages viewed, approximate location, device type and the site you came
+        from. If you decline, or never answer, Google Analytics is not loaded at all. It never runs on
+        wedding cameras, galleries, slideshows or couple portals, so guests at a wedding are never
+        tracked. You can change your choice at any time with “cookie settings” at the bottom of these
+        pages. Google processes this data in the United States under its own privacy policy.
       </p>
 
       <H2>How we use it</H2>
@@ -65,8 +76,8 @@ export default function PrivacyPage() {
       <p>
         We use trusted service providers bound by confidentiality and security obligations:
         Supabase (database and media storage, hosted in Canada), Vercel (website hosting and our
-        off-site backup copy, hosted in Montréal, with a global network that delivers pages), and
-        ShootProof (invoices and payment). Some of these providers are U.S. companies, so your
+        off-site backup copy, hosted in Montréal, with a global network that delivers pages),
+        ShootProof (invoices and payment) and, only if you accept it, Google Analytics. Some of these providers are U.S. companies, so your
         information may be accessible to authorities in the United States under its laws.
       </p>
 

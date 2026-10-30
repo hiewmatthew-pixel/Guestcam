@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import { CONTACT_EMAIL, mailto } from '@/lib/contact';
 import { PARENT_NAME, PARENT_SITE_URL, SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
 import StudioLink from '@/components/StudioLink';
+import Analytics, { CookieSettingsLink } from '@/components/Analytics';
 
 export const metadata: Metadata = { alternates: { canonical: '/' } };
 
@@ -80,8 +81,10 @@ export default function MarketingPage() {
         </a>
         <br />
         <Link href="/terms" className="inline-flex min-h-11 items-center px-2 hover:text-ink">terms</Link>·
-        <Link href="/privacy" className="inline-flex min-h-11 items-center px-2 hover:text-ink">privacy</Link>
+        <Link href="/privacy" className="inline-flex min-h-11 items-center px-2 hover:text-ink">privacy</Link>·
+        <CookieSettingsLink />
       </footer>
+      <Analytics />
     </main>
   );
 }

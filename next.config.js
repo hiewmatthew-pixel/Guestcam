@@ -7,20 +7,26 @@ const supabaseOrigin = (() => {
 // Content Security Policy. Strict-ish — allows our own bundles + Supabase
 // for storage/realtime + Google Fonts (used by next/font) + data: blobs
 // (used by the demo store to inline media into <img>).
-const csp = [
+// Google Analytics (opt-in) runs only on the public marketing pages, so
+// only they may talk to Google; cameras, galleries and portals can't.
+const GA_SCRIPT = 'https://www.googletagmanager.com';
+const GA_CONNECT = 'https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com';
+const buildCsp = (analytics) => [
   `default-src 'self'`,
-  `script-src 'self' 'unsafe-inline'`,
+  `script-src 'self' 'unsafe-inline'${analytics ? ` ${GA_SCRIPT}` : ''}`,
   `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
   `font-src 'self' data: https://fonts.gstatic.com`,
-  `img-src 'self' data: blob: ${supabaseOrigin}`,
+  `img-src 'self' data: blob: ${supabaseOrigin}${analytics ? ` ${GA_CONNECT}` : ''}`,
   `media-src 'self' data: blob: ${supabaseOrigin}`,
-  `connect-src 'self' ${supabaseOrigin} ${supabaseOrigin.replace('https:', 'wss:')}`,
+  `connect-src 'self' ${supabaseOrigin} ${supabaseOrigin.replace('https:', 'wss:')}${analytics ? ` ${GA_CONNECT}` : ''}`,
   `worker-src 'self'`,
   `manifest-src 'self'`,
   `frame-ancestors 'none'`,
   `base-uri 'self'`,
   `form-action 'self'`,
 ].filter(Boolean).join('; ');
+const csp = buildCsp(false);
+const PUBLIC_PAGES = ['/', '/pricing', '/terms', '/privacy'];
 
 const securityHeaders = [
   { key: 'Content-Security-Policy', value: csp },
@@ -50,6 +56,11 @@ const nextConfig = {
         source: '/:path*',
         headers: securityHeaders,
       },
+      // public marketing pages: same headers, plus Google Analytics (last match wins)
+      ...PUBLIC_PAGES.map((source) => ({
+        source,
+        headers: [{ key: 'Content-Security-Policy', value: buildCsp(true) }],
+      })),
       // service worker: always revalidate so new deploys are picked up promptly
       {
         source: '/sw.js',

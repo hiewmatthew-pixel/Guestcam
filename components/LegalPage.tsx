@@ -2,8 +2,9 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { CONTACT_EMAIL, mailto } from '@/lib/contact';
 import StudioLink from '@/components/StudioLink';
+import Analytics, { CookieSettingsLink } from '@/components/Analytics';
 
-export const LEGAL_UPDATED = 'October 29, 2026';
+export const LEGAL_UPDATED = 'October 30, 2026';
 
 /** Shared shell for /terms and /privacy: readable measure, studio header. */
 export default function LegalPage({ title, children }: { title: string; children: React.ReactNode }) {
@@ -28,12 +29,18 @@ export default function LegalPage({ title, children }: { title: string; children
         <Link href="/privacy" className="inline-flex min-h-11 items-center px-2 hover:text-ink">privacy</Link>·
         <a href={mailto('GlanceCam question')} className="inline-flex min-h-11 items-center px-2 normal-case tracking-normal hover:text-ink">
           {CONTACT_EMAIL}
-        </a>
+        </a>·
+        <CookieSettingsLink />
       </footer>
+      <Analytics />
     </main>
   );
 }
 
-export function H2({ children }: { children: React.ReactNode }) {
-  return <h2 className="mt-10 mb-3 font-serif italic text-2xl text-ink">{children}</h2>;
+export function H2({ children, id }: { children: React.ReactNode; id?: string }) {
+  return (
+    <h2 id={id} className="mt-10 mb-3 scroll-mt-6 font-serif italic text-2xl text-ink">
+      {children}
+    </h2>
+  );
 }

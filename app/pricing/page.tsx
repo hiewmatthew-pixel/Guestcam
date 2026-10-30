@@ -5,6 +5,7 @@ import { TIER_LIST, formatPriceCAD } from '@/lib/tiers';
 import { CONTACT_EMAIL as INQUIRY_EMAIL } from '@/lib/contact';
 import { pageMetadata, SITE_NAME, SITE_URL } from '@/lib/site';
 import StudioLink from '@/components/StudioLink';
+import Analytics, { CookieSettingsLink } from '@/components/Analytics';
 
 const TITLE = 'Pricing: QR Code Wedding Camera & Live Photo Gallery';
 const DESCRIPTION =
@@ -224,8 +225,10 @@ export default function PricingPage() {
         </a>
         <br />
         <Link href="/terms" className="inline-flex min-h-11 items-center px-2 hover:text-ink">terms</Link>·
-        <Link href="/privacy" className="inline-flex min-h-11 items-center px-2 hover:text-ink">privacy</Link>
+        <Link href="/privacy" className="inline-flex min-h-11 items-center px-2 hover:text-ink">privacy</Link>·
+        <CookieSettingsLink />
       </footer>
+      <Analytics />
     </main>
   );
 }
