@@ -133,6 +133,7 @@ export default function AdminEventList() {
           <label className="flex items-center gap-2 min-h-11 text-[10px] uppercase tracking-widest text-ink/70 cursor-pointer">
             <input
               type="checkbox"
+              className="h-5 w-5 accent-gold"
               checked={demo}
               onChange={(e) => {
                 setDemo(e.target.checked);
@@ -252,7 +253,7 @@ export default function AdminEventList() {
               onChange={(e) => setRevealAt(e.target.value)}
               className="w-full bg-transparent border-b border-warm-gray-light focus:border-gold-deep py-2"
             />
-            <p className="mt-2 text-[11px] text-ink/70 leading-relaxed">
+            <p className="mt-2 max-w-prose text-[11px] text-ink/70 leading-relaxed">
               Until this time the public gallery shows guests a soft countdown
               instead of the photos — like a roll of film developing overnight.
               You and the couple still see everything via the portal at any time.

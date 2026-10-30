@@ -153,7 +153,7 @@ export default function PricingPage() {
                 ].join(' ')}
               >
                 {isHero && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gold text-ink text-[9px] uppercase tracking-widest px-3 py-1 rounded-sm">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gold text-ink text-[10px] uppercase tracking-widest px-3 py-1 rounded-sm">
                     most chosen
                   </span>
                 )}

@@ -409,7 +409,7 @@ export default function AdminEventDetail({ slug }: Props) {
                 rotate link
               </button>
             </div>
-            <p className="mt-3 text-[11px] text-ink/70 leading-relaxed">
+            <p className="mt-3 max-w-prose text-[11px] text-ink/70 leading-relaxed">
               “Copy message with dates” gives you a ready-to-send note with both links,
               when the guest link opens, when the gallery closes and the download
               deadline. Anyone with this link can view and download, so share it carefully.

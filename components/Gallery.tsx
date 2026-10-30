@@ -660,13 +660,13 @@ function Tile({
           {item.media_type !== 'photo' && item.media_type !== 'voice' && (
             <span
               aria-hidden
-              className="absolute top-2 left-2 text-[9px] uppercase tracking-widest text-cream bg-ink/75 px-1.5 py-0.5 rounded-sm"
+              className="absolute top-2 left-2 text-[10px] uppercase tracking-widest text-cream bg-ink/75 px-1.5 py-0.5 rounded-sm"
             >
               {labelFor(item.media_type)}
             </span>
           )}
           {isPending && (
-            <span className="absolute top-2 right-2 text-[9px] uppercase tracking-widest text-ink bg-gold px-1.5 py-0.5 rounded-sm">
+            <span className="absolute top-2 right-2 text-[10px] uppercase tracking-widest text-ink bg-gold px-1.5 py-0.5 rounded-sm">
               pending
             </span>
           )}
