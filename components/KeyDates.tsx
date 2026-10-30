@@ -55,7 +55,7 @@ export default function KeyDates({ event, className = '' }: { event: Ev; classNa
               {r.label}
               {r.past && <span className="ml-2 normal-case tracking-normal italic">(passed)</span>}
             </dt>
-            <dd className={`mt-1 font-serif text-xl ${r.past ? 'text-ink/60' : 'text-ink'}`}>{r.value}</dd>
+            <dd className={`mt-1 font-serif text-xl ${r.past ? 'text-ink/70' : 'text-ink'}`}>{r.value}</dd>
             <dd className="mt-1 text-[11px] leading-relaxed text-ink/70">{r.note}</dd>
           </div>
         ))}

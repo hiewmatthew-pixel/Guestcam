@@ -7,6 +7,17 @@ import { shareMedia, type ShareResult } from '@/lib/share';
 import CommentThread from '@/components/CommentThread';
 import { extensionFor } from '@/lib/media';
 import { filterLabel } from '@/lib/filters';
+import {
+  ALL,
+  DEFAULT_REFINE,
+  SORT_LABELS,
+  guestOptions,
+  isRefined,
+  lookOptions,
+  refineItems,
+  type Refine,
+  type SortKey,
+} from '@/lib/gallery-refine';
 
 type Props = {
   items: SubmissionRow[];
@@ -59,6 +70,7 @@ export default function Gallery({
   const [openId, setOpenId] = useState<string | null>(null);
   const [openSnapshot, setOpenSnapshot] = useState<SubmissionRow | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
+  const [refine, setRefine] = useState<Refine>(DEFAULT_REFINE);
   const [favs, setFavs] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -107,7 +119,7 @@ export default function Gallery({
     return c;
   }, [visibleItems, favs, canModerate]);
 
-  const filtered = useMemo(() => {
+  const tabbed = useMemo(() => {
     if (filter === 'pending') return visibleItems.filter((it) => !it.approved);
     // Favourites tab shows BOTH approved and pending favourites when the
     // viewer can moderate, otherwise approved-only.
@@ -120,6 +132,11 @@ export default function Gallery({
     if (filter === 'all') return approved;
     return approved.filter((it) => it.media_type === filter);
   }, [visibleItems, filter, favs, canModerate]);
+
+  // sort / guest / film look, applied on top of the tab
+  const filtered = useMemo(() => refineItems(tabbed, refine), [tabbed, refine]);
+  const guests = useMemo(() => guestOptions(visibleItems), [visibleItems]);
+  const looks = useMemo(() => lookOptions(visibleItems), [visibleItems]);
 
   const openIdx = openId ? filtered.findIndex((it) => it.id === openId) : -1;
   const open: SubmissionRow | null = openId
@@ -274,9 +291,28 @@ export default function Gallery({
             })}
         </div>
       </div>
+      <RefineBar
+        refine={refine}
+        onChange={setRefine}
+        guests={guests}
+        looks={looks}
+        shown={filtered.length}
+        total={tabbed.length}
+      />
 
       {/* Empty state for the active filter */}
-      {filtered.length === 0 ? (
+      {tabbed.length > 0 && filtered.length === 0 ? (
+        <div className="py-24 text-center">
+          <p className="font-serif italic text-2xl text-ink/70">nothing matches these filters</p>
+          <button
+            type="button"
+            onClick={() => setRefine(DEFAULT_REFINE)}
+            className="mt-4 min-h-11 text-[10px] uppercase tracking-widest"
+          >
+            <span className="border-b border-gold pb-0.5">clear filters</span>
+          </button>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="py-24 text-center">
           <p className="font-serif italic text-2xl text-ink/70">
             {filter === 'favourites' ? 'no favourites yet' : `no ${TAB_LABELS[filter]} yet`}
@@ -335,6 +371,109 @@ export default function Gallery({
         )}
       </div>
     </>
+  );
+}
+
+// --- Sort / filter bar ------------------------------------------------------
+
+const selectClass =
+  'min-h-11 w-full sm:w-auto sm:max-w-[11rem] rounded-sm border border-ink/15 bg-cream px-2 text-[12px] text-ink focus:border-gold-deep';
+
+function RefineBar({
+  refine,
+  onChange,
+  guests,
+  looks,
+  shown,
+  total,
+}: {
+  refine: Refine;
+  onChange: (r: Refine) => void;
+  guests: { key: string; label: string; count: number }[];
+  looks: { key: string; label: string; count: number }[];
+  shown: number;
+  total: number;
+}) {
+  const set = (patch: Partial<Refine>) => onChange({ ...refine, ...patch });
+  const showGuests = guests.length > 1;
+  const showLooks = looks.length > 1;
+  // phones: tucked behind a toggle so the controls don't eat the screen
+  const [open, setOpen] = useState(false);
+  const active = (refine.sort !== 'newest' ? 1 : 0) + (refine.guest !== ALL ? 1 : 0) + (refine.look !== ALL ? 1 : 0);
+  return (
+    <div className="px-3 pt-2 border-b border-ink/10">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls="gallery-refine"
+        className="sm:hidden min-h-11 text-[10px] uppercase tracking-widest text-ink/80"
+      >
+        <span className="border-b border-gold pb-0.5">
+          sort &amp; filter{active ? ` · ${active} on` : ''}
+        </span>
+        <span aria-hidden className="ml-1">{open ? '▴' : '▾'}</span>
+      </button>
+      <div
+        id="gallery-refine"
+        className={`${open ? 'grid' : 'hidden'} grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 pb-2 sm:flex sm:flex-wrap sm:gap-x-4`}
+      >
+      <label className="contents sm:flex sm:items-center sm:gap-2 text-[10px] uppercase tracking-widest text-ink/70">
+        sort
+        <select
+          value={refine.sort}
+          onChange={(e) => set({ sort: e.target.value as SortKey })}
+          className={selectClass}
+        >
+          {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+            <option key={k} value={k}>
+              {SORT_LABELS[k]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {showGuests && (
+        <label className="contents sm:flex sm:items-center sm:gap-2 text-[10px] uppercase tracking-widest text-ink/70">
+          guest
+          <select value={refine.guest} onChange={(e) => set({ guest: e.target.value })} className={selectClass}>
+            <option value={ALL}>everyone</option>
+            {guests.map((g) => (
+              <option key={g.key} value={g.key}>
+                {g.label} ({g.count})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {showLooks && (
+        <label className="contents sm:flex sm:items-center sm:gap-2 text-[10px] uppercase tracking-widest text-ink/70">
+          film look
+          <select value={refine.look} onChange={(e) => set({ look: e.target.value })} className={selectClass}>
+            <option value={ALL}>all looks</option>
+            {looks.map((l) => (
+              <option key={l.key} value={l.key}>
+                {l.label} ({l.count})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {isRefined(refine) && (
+        <div className="col-span-2 flex items-center gap-4">
+          <span role="status" className="text-[11px] text-ink/70">
+            showing {shown} of {total}
+          </span>
+          <button
+            type="button"
+            onClick={() => onChange(DEFAULT_REFINE)}
+            className="min-h-11 text-[10px] uppercase tracking-widest text-ink/70 hover:text-ink"
+          >
+            <span className="border-b border-ink/40 pb-0.5">clear</span>
+          </button>
+        </div>
+      )}
+      </div>
+    </div>
   );
 }
 
