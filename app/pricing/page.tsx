@@ -113,12 +113,6 @@ export default function PricingPage() {
             Golden Glance Studio
           </span>
         </Link>
-        <Link
-          href="/admin"
-          className="ml-auto inline-flex items-center min-h-11 px-1 text-[10px] uppercase tracking-widest text-ink/70 hover:text-ink"
-        >
-          studio admin
-        </Link>
       </header>
 
       <section className="px-6 pt-20 pb-12 text-center">

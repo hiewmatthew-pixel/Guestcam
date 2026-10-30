@@ -64,13 +64,6 @@ export default function MarketingPage() {
             >
               try the camera
             </Link>
-            <span aria-hidden className="text-ink/70">·</span>
-            <Link
-              href="/admin"
-              className="inline-flex items-center min-h-11 text-xs uppercase tracking-widest text-ink/70 underline-offset-4 hover:underline"
-            >
-              studio admin
-            </Link>
           </div>
         </div>
       </section>
