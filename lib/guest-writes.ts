@@ -33,6 +33,11 @@ export const MEDIA_RULES: Record<MediaType, { types: Record<string, string>; max
   voice: { types: { 'audio/mp4': 'm4a', 'audio/webm': 'webm' }, maxBytes: 10 * 1024 * 1024 },
 };
 
+// Gallery previews: the phone uploads a small JPEG beside each photo/video
+// (lib/thumbnail.ts) so the gallery grid never downloads originals.
+const THUMB_MAX_BYTES = 1024 * 1024;
+export const thumbPathFor = (path: string) => path.replace(/\.[a-z0-9]+$/i, '.thumb.jpg');
+
 const UPLOAD_PATH_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/\d{10,16}-[0-9a-f-]{36}\.(jpg|png|webp|webm|mp4|m4a)$/i;
 
@@ -92,7 +97,7 @@ async function sweepStalePending(eventId: string) {
     .limit(100);
   const paths = (data ?? []).map((r: { path: string }) => r.path);
   if (paths.length === 0) return;
-  await sb.storage.from(BUCKET).remove(paths);
+  await sb.storage.from(BUCKET).remove([...paths, ...paths.map(thumbPathFor)]);
   await sb.from('pending_uploads').delete().in('path', paths);
 }
 
@@ -104,7 +109,7 @@ async function sweepStalePending(eventId: string) {
 export async function requestUpload(
   ip: string,
   input: Record<string, unknown>,
-): Promise<{ ok: true; path: string; signedUrl: string } | Fail> {
+): Promise<{ ok: true; path: string; signedUrl: string; thumbSignedUrl?: string } | Fail> {
   if (!checkRateLimit(`upload-req:${ip}`, IP_LIMIT_PER_MIN, 60_000).allowed) {
     return fail('Lots of uploads at once. Trying again in a moment.', true);
   }
@@ -138,7 +143,27 @@ export async function requestUpload(
     await sb.from('pending_uploads').delete().eq('path', path);
     return fail('Could not start the upload. Trying again shortly.', true);
   }
-  return { ok: true, path, signedUrl: data.signedUrl };
+  // best effort: without a preview the gallery just shows the original
+  let thumbSignedUrl: string | undefined;
+  if (input.thumb === true && mediaType !== 'voice') {
+    const { data: t } = await sb.storage.from(BUCKET).createSignedUploadUrl(thumbPathFor(path));
+    thumbSignedUrl = t?.signedUrl;
+  }
+  return { ok: true, path, signedUrl: data.signedUrl, thumbSignedUrl };
+}
+
+/** Public URL of a valid uploaded preview, or null (an invalid one is removed). */
+async function acceptThumb(path: string): Promise<string | null> {
+  const storage = getSupabaseAdmin()!.storage.from(BUCKET);
+  const tp = thumbPathFor(path);
+  const { data: info, error } = await storage.info(tp);
+  if (error || !info) return null;
+  const size = Number((info as { size?: number }).size ?? 0);
+  if (baseType((info as { contentType?: string }).contentType) !== 'image/jpeg' || size <= 0 || size > THUMB_MAX_BYTES) {
+    await storage.remove([tp]);
+    return null;
+  }
+  return storage.getPublicUrl(tp).data.publicUrl;
 }
 
 /**
@@ -183,16 +208,18 @@ export async function finalizeSubmission(
   const type = baseType((info as { contentType?: string }).contentType);
   if (!rules.types[type] || size <= 0 || size > rules.maxBytes) {
     // safe to delete: it is still pending, so no submission points at it
-    await storage.remove([path]);
+    await storage.remove([path, thumbPathFor(path)]);
     await sb.from('pending_uploads').delete().eq('path', path);
     return fail('That file was not accepted.');
   }
 
   const filterName = String(input.filterName ?? '');
   const filter = FILTERS.some((f) => f.id === filterName) ? filterName : 'none';
+  const thumbUrl = mediaType === 'voice' ? null : await acceptThumb(path).catch(() => null);
   const { error } = await sb.from('submissions').insert({
     event_id: ev.id,
     media_url: mediaUrl,
+    thumb_url: thumbUrl,
     media_type: mediaType,
     filter_name: mediaType === 'voice' ? 'voice' : filter,
     guest_name: cleanString(input.guestName, LIMITS.GUEST_NAME) || null,

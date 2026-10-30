@@ -151,6 +151,10 @@ drop policy if exists "anon can insert submissions" on public.submissions;
 -- a stored file can only ever be recorded once (makes finalize retries safe)
 create unique index if not exists submissions_media_url_key on public.submissions(media_url);
 
+-- small JPEG preview the phone uploads beside each photo/video, so gallery
+-- grids never download originals (written by the server only)
+alter table public.submissions add column if not exists thumb_url text;
+
 -- ── comments ───────────────────────────────────────────────────────────
 
 -- comments are only visible on submissions the guest can see

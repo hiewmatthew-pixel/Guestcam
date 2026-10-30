@@ -16,6 +16,7 @@
 //   strand phones that have had the page open all night.
 
 import { uploadToSignedUrl, UploadError } from './upload';
+import { makeThumbnail } from './thumbnail';
 import type { MediaType } from './supabase';
 
 export type QueueItem = {
@@ -33,6 +34,8 @@ export type QueueItem = {
   path?: string;
   signedUrl?: string;
   signedAt?: number;
+  thumbSignedUrl?: string;
+  thumbDone?: boolean;
   uploaded?: boolean;
   missingChecks?: number;
   failed?: boolean;
@@ -274,7 +277,7 @@ async function drain() {
   }
 }
 
-type ApiResult = { ok: true; path?: string; signedUrl?: string } | { ok: false; error: string; retry: boolean };
+type ApiResult = { ok: true; path?: string; signedUrl?: string; thumbSignedUrl?: string } | { ok: false; error: string; retry: boolean };
 
 async function api(path: string, body: unknown): Promise<ApiResult> {
   const res = await fetch(path, {
@@ -317,9 +320,17 @@ async function sendOne(item: QueueItem) {
         mediaType: item.mediaType,
         contentType: item.contentType,
         size: item.blob.size,
+        thumb: item.mediaType !== 'voice',
       });
       if (!res.ok) return res.retry ? retryLater(res.error) : giveUp(res.error);
-      item = { ...item, path: res.path, signedUrl: res.signedUrl, signedAt: Date.now() };
+      item = {
+        ...item,
+        path: res.path,
+        signedUrl: res.signedUrl,
+        signedAt: Date.now(),
+        thumbSignedUrl: res.thumbSignedUrl,
+        thumbDone: false,
+      };
       await putItem(item);
     }
 
@@ -343,6 +354,20 @@ async function sendOne(item: QueueItem) {
       await putItem(item);
     }
 
+    // 2b. the gallery preview: one try, never blocks the capture itself
+    if (item.thumbSignedUrl && !item.thumbDone) {
+      try {
+        const thumb = await makeThumbnail(item.blob, item.mediaType);
+        if (thumb) {
+          await uploadToSignedUrl({ signedUrl: item.thumbSignedUrl, blob: thumb, contentType: 'image/jpeg' });
+        }
+      } catch {
+        /* the gallery falls back to the original */
+      }
+      item = { ...item, thumbDone: true };
+      await putItem(item);
+    }
+
     // 3. record it
     const fin = await api('/api/upload/finalize', {
       slug: item.slug,
@@ -355,7 +380,13 @@ async function sendOne(item: QueueItem) {
       // the file never arrived after several checks: upload it again
       const missing = (item.missingChecks ?? 0) + 1;
       if (/not arrived/i.test(fin.error) && missing >= 5) {
-        return retryLater(fin.error, { uploaded: false, signedUrl: undefined, path: undefined, missingChecks: 0 });
+        return retryLater(fin.error, {
+          uploaded: false,
+          signedUrl: undefined,
+          path: undefined,
+          thumbSignedUrl: undefined,
+          missingChecks: 0,
+        });
       }
       return retryLater(fin.error, { missingChecks: missing });
     }

@@ -139,6 +139,14 @@ The couple portal shows the deletion date and turns gold in the last 14 days.
 Change retention in `lib/tiers.ts` (`retentionDays`). The privacy page
 reads the same values. Run history is under Vercel → Settings → Cron Jobs.
 
+## Download traffic (egress)
+Guests' phones upload a ~60 KB JPEG preview beside each photo and video
+(`lib/thumbnail.ts`, stored as `<file>.thumb.jpg`, `submissions.thumb_url`).
+Gallery tiles and video posters use the preview, and originals load only in
+the lightbox, the TV slideshow and the ZIP download. Media is cached by
+browsers for a year (file names are never reused). Supabase Pro includes 250 GB of
+egress a month; check usage under Supabase → Organization → Usage.
+
 ## Payments and contact
 There's no checkout in the app on purpose. Quotes and invoices go out through
 **ShootProof**, and every inquiry and contact link on the site goes to

@@ -32,7 +32,9 @@ export function uploadToSignedUrl(opts: {
     }
     xhr.setRequestHeader('content-type', opts.contentType);
     xhr.setRequestHeader('x-upsert', 'false');
-    xhr.setRequestHeader('cache-control', 'max-age=3600');
+    // every file has a unique, never-reused name, so browsers and the CDN
+    // can keep it for a year instead of re-downloading it every hour
+    xhr.setRequestHeader('cache-control', 'max-age=31536000');
     // 60 s plus 1 s per 100 KB: generous for slow links, finite for dead ones
     xhr.timeout = 60_000 + Math.ceil(opts.blob.size / 100_000) * 1000;
 

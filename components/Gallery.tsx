@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { labelForMediaType, type SubmissionRow } from '@/lib/supabase';
+import { labelForMediaType, tileImageUrl, type SubmissionRow } from '@/lib/supabase';
 import { listFavorites, toggleFavorite } from '@/lib/favorites';
 import { shareMedia, type ShareResult } from '@/lib/share';
 import CommentThread from '@/components/CommentThread';
@@ -514,6 +514,7 @@ function Lightbox({
               <video
                 key={item.id}
                 src={item.media_url}
+                poster={tileImageUrl(item) ?? undefined}
                 aria-label={desc}
                 className={mediaClass}
                 autoPlay
@@ -548,6 +549,7 @@ function Lightbox({
               <video
                 key={item.id}
                 src={item.media_url}
+                poster={tileImageUrl(item) ?? undefined}
                 aria-label={desc}
                 className={mediaClass}
                 controls
@@ -626,9 +628,19 @@ function Tile({
           {item.media_type === 'photo' ? (
             // decorative here — the button's text already names the capture
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.media_url} alt="" className="block w-full h-auto" loading="lazy" />
+            <img
+              src={tileImageUrl(item) ?? item.media_url}
+              alt=""
+              className="block w-full h-auto"
+              loading="lazy"
+              decoding="async"
+            />
           ) : item.media_type === 'boomerang' || item.media_type === 'video' ? (
-            <TileVideo src={item.media_url} loopInView={item.media_type === 'boomerang'} />
+            <TileVideo
+              src={item.media_url}
+              poster={tileImageUrl(item)}
+              loopInView={item.media_type === 'boomerang'}
+            />
           ) : (
             <div className="aspect-[3/2] bg-gradient-to-br from-warm-gray-light to-warm-gray-light/60 grid place-items-center px-4 py-6">
               <div className="text-center" aria-hidden>
@@ -699,7 +711,10 @@ function Tile({
  * away; films preview on hover. Saves a lot of bandwidth on a long
  * gallery over venue wifi.
  */
-function TileVideo({ src, loopInView }: { src: string; loopInView: boolean }) {
+// With a poster preview, a tile downloads nothing until it plays: films
+// only on hover (desktop), boomerangs only while on screen. Without one
+// (older captures) it falls back to fetching the first frame itself.
+function TileVideo({ src, poster, loopInView }: { src: string; poster: string | null; loopInView: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -724,17 +739,18 @@ function TileVideo({ src, loopInView }: { src: string; loopInView: boolean }) {
 
   // a tiny media-fragment offset makes iOS paint the first frame with
   // preload="metadata" (http(s) only — not data:/blob: URLs)
-  const withFrame = /^https?:/i.test(src) && !src.includes('#') ? `${src}#t=0.001` : src;
+  const withFrame = !poster && /^https?:/i.test(src) && !src.includes('#') ? `${src}#t=0.001` : src;
 
   return (
     <video
       ref={ref}
       src={withFrame}
+      poster={poster ?? undefined}
       className="block w-full h-auto"
       muted
       playsInline
       loop
-      preload="metadata"
+      preload={poster ? 'none' : 'metadata'}
       aria-hidden
       tabIndex={-1}
       onMouseEnter={loopInView ? undefined : (e) => e.currentTarget.play().catch(() => {})}

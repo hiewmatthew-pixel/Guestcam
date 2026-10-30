@@ -82,6 +82,9 @@ export type SubmissionRow = {
   id: string;
   event_id: string;
   media_url: string;
+  // small JPEG preview for gallery tiles / video posters (null on voice
+  // notes and older captures: fall back to media_url)
+  thumb_url?: string | null;
   media_type: MediaType;
   filter_name: string;
   guest_name: string | null;
@@ -109,6 +112,13 @@ const MEDIA_PREFIX = url ? `${url.replace(/\/+$/, '')}/storage/v1/object/public/
 export function isTrustedMediaUrl(row: Pick<SubmissionRow, 'media_url' | 'event_id'>): boolean {
   if (row.media_url.startsWith('data:')) return true;
   return !!MEDIA_PREFIX && row.media_url.startsWith(`${MEDIA_PREFIX}${row.event_id}/`);
+}
+
+/** What a gallery tile should load: the preview when there's a trusted one. */
+export function tileImageUrl(row: Pick<SubmissionRow, 'media_url' | 'thumb_url' | 'event_id'>): string | null {
+  const t = row.thumb_url;
+  if (t && !!MEDIA_PREFIX && t.startsWith(`${MEDIA_PREFIX}${row.event_id}/`)) return t;
+  return null;
 }
 
 /** Broadcast channel the server pings after a moderation change. */

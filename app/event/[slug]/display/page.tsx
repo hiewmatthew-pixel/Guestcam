@@ -11,7 +11,7 @@ import {
   subscribeToSubmissions,
 } from '@/lib/demo-store';
 import { DEMO_EVENT_ID, makeDemoEvent } from '@/lib/demo-store';
-import {
+import { tileImageUrl,
   fetchPublicEventBySlug,
   getSupabase,
   isSupabaseConfigured,
@@ -395,6 +395,7 @@ function SlideMedia({
     <video
       ref={videoRef}
       src={item.media_url}
+      poster={tileImageUrl(item) ?? undefined}
       aria-label={desc}
       className="absolute inset-0 w-full h-full object-contain animate-slide-in"
       autoPlay={!paused}
