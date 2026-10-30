@@ -1,12 +1,14 @@
 import type { Metadata } from 'next';
+import { pageMetadata } from '@/lib/site';
 import LegalPage, { H2 } from '@/components/LegalPage';
 import { CONTACT_EMAIL, mailto } from '@/lib/contact';
 import { TIER_LIST } from '@/lib/tiers';
 
-export const metadata: Metadata = {
-  title: 'Privacy · GlanceCam',
+export const metadata: Metadata = pageMetadata({
+  title: 'Privacy policy',
   description: 'What GlanceCam collects at your wedding, who sees it, and when it is deleted.',
-};
+  path: '/privacy',
+});
 
 function days(n: number): string {
   return n >= 365 ? `${Math.round(n / 30.4)} months` : `${n} days`;

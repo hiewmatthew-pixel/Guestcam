@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Cormorant_Garamond, Inter } from 'next/font/google';
 import ServiceWorkerRegister from '@/components/ServiceWorkerRegister';
 import '../styles/globals.css';
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
 
 const cormorant = Cormorant_Garamond({
   subsets: ['latin'],
@@ -19,10 +20,29 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Golden Glance · GlanceCam',
-  description:
-    'Capture film-look photos and short videos for the couple — one shared gallery, kept forever.',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'GlanceCam · QR Code Wedding Camera for Guests',
+    template: '%s · GlanceCam',
+  },
+  description: SITE_DESCRIPTION,
   applicationName: 'GlanceCam',
+  authors: [{ name: 'Golden Glance Studio' }],
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    locale: 'en_CA',
+    url: '/',
+    title: 'GlanceCam · QR Code Wedding Camera for Guests',
+    description: SITE_DESCRIPTION,
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'GlanceCam by Golden Glance Studio' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'GlanceCam · QR Code Wedding Camera for Guests',
+    description: SITE_DESCRIPTION,
+    images: ['/opengraph-image'],
+  },
   appleWebApp: {
     capable: true,
     title: 'GlanceCam',
@@ -42,7 +62,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${cormorant.variable} ${inter.variable}`}>
+    <html lang="en-CA" className={`${cormorant.variable} ${inter.variable}`}>
       <body className="bg-cream text-ink min-h-screen">
         {children}
         <ServiceWorkerRegister />

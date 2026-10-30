@@ -1,10 +1,32 @@
 import Link from 'next/link';
 import Logo from '@/components/Logo';
+import type { Metadata } from 'next';
 import { CONTACT_EMAIL, mailto } from '@/lib/contact';
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
+
+export const metadata: Metadata = { alternates: { canonical: '/' } };
+
+const ORGANIZATION = {
+  '@context': 'https://schema.org',
+  '@type': 'ProfessionalService',
+  name: SITE_NAME,
+  description: SITE_DESCRIPTION,
+  url: SITE_URL,
+  email: CONTACT_EMAIL,
+  image: `${SITE_URL}/opengraph-image`,
+  logo: `${SITE_URL}/pwa-icons/icon-512.png`,
+  priceRange: '$79–$299 CAD',
+  address: { '@type': 'PostalAddress', addressLocality: 'Toronto', addressRegion: 'ON', addressCountry: 'CA' },
+  areaServed: 'CA',
+};
 
 export default function MarketingPage() {
   return (
     <main className="min-h-screen flex flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(ORGANIZATION).replace(/</g, '\\u003c') }}
+      />
       <header className="px-6 pt-8 flex items-center gap-3">
         <Logo className="h-5 w-8 text-ink" />
         <span className="text-[11px] tracking-widest uppercase text-ink/70">
@@ -23,8 +45,9 @@ export default function MarketingPage() {
             together
           </h1>
           <p className="mt-8 text-ink/70 leading-relaxed">
-            A small camera built for your guests. Film-look photos and short videos —
-            captured on their phones, gathered into one quiet, shared gallery.
+            A wedding camera built for your guests. They scan a QR code, no app to
+            download, and their film-look photos, videos and voice notes gather
+            into one quiet, shared gallery.
           </p>
 
           <div className="mt-12 flex items-center justify-center gap-6 flex-wrap">

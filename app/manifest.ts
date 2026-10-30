@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'GlanceCam · Golden Glance',
     short_name: 'GlanceCam',
     description:
-      'Capture film-look photos and short videos for the couple — one shared gallery, kept forever.',
+      'A wedding camera for your guests: film-look photos, videos and voice notes, gathered into one shared gallery.',
     start_url: '/',
     scope: '/',
     display: 'standalone',

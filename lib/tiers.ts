@@ -61,7 +61,7 @@ export const TIERS: Record<TierId, TierDef> = {
     id: 'glimpse',
     label: 'Glimpse',
     italic: 'a small, warm offering',
-    price: 69,
+    price: 79,
     blurb: 'For intimate gatherings — photos only, kept simple.',
     bullets: [
       'Photos only',
@@ -98,7 +98,7 @@ export const TIERS: Record<TierId, TierDef> = {
     id: 'signature',
     label: 'Signature',
     italic: 'most couples choose this',
-    price: 169,
+    price: 179,
     blurb: 'The full evening — every filter, sound, voice notes and a slideshow for the room.',
     bullets: [
       'Everything in Glimpse',

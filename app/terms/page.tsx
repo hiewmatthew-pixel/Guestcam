@@ -1,12 +1,14 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { pageMetadata } from '@/lib/site';
 import LegalPage, { H2 } from '@/components/LegalPage';
 import { CONTACT_EMAIL, mailto } from '@/lib/contact';
 
-export const metadata: Metadata = {
-  title: 'Terms · GlanceCam',
+export const metadata: Metadata = pageMetadata({
+  title: 'Terms',
   description: 'The terms for couples booking GlanceCam and guests using it.',
-};
+  path: '/terms',
+});
 
 export default function TermsPage() {
   return (
