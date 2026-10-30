@@ -4,6 +4,7 @@ import Logo from '@/components/Logo';
 import { TIER_LIST, formatPriceCAD } from '@/lib/tiers';
 import { CONTACT_EMAIL as INQUIRY_EMAIL } from '@/lib/contact';
 import { pageMetadata, SITE_NAME, SITE_URL } from '@/lib/site';
+import StudioLink from '@/components/StudioLink';
 
 const TITLE = 'Pricing: QR Code Wedding Camera & Live Photo Gallery';
 const DESCRIPTION =
@@ -65,7 +66,7 @@ function structuredData() {
       '@type': 'Product',
       name: 'GlanceCam wedding guest camera',
       description: DESCRIPTION,
-      brand: { '@type': 'Brand', name: 'Golden Glance Studio' },
+      brand: { '@type': 'Brand', name: 'Golden Glance Studio', url: 'https://www.goldenglancestudio.com' },
       url: `${SITE_URL}/pricing`,
       image: `${SITE_URL}/opengraph-image`,
       offers: {
@@ -217,7 +218,7 @@ export default function PricingPage() {
       </section>
 
       <footer className="px-6 py-8 text-center text-[10px] tracking-widest uppercase text-ink/70 border-t border-warm-gray-light">
-        Crafted in Toronto ·{' '}
+        Crafted in Toronto by <StudioLink /> ·{' '}
         <a href={`mailto:${INQUIRY_EMAIL}`} className="inline-flex min-h-11 items-center underline underline-offset-4 decoration-ink/40 hover:decoration-ink">
           {INQUIRY_EMAIL}
         </a>

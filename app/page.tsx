@@ -2,7 +2,8 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import type { Metadata } from 'next';
 import { CONTACT_EMAIL, mailto } from '@/lib/contact';
-import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
+import { PARENT_NAME, PARENT_SITE_URL, SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
+import StudioLink from '@/components/StudioLink';
 
 export const metadata: Metadata = { alternates: { canonical: '/' } };
 
@@ -18,6 +19,8 @@ const ORGANIZATION = {
   priceRange: '$79–$299 CAD',
   address: { '@type': 'PostalAddress', addressLocality: 'Toronto', addressRegion: 'ON', addressCountry: 'CA' },
   areaServed: 'CA',
+  parentOrganization: { '@type': 'Organization', name: PARENT_NAME, url: PARENT_SITE_URL },
+  sameAs: [PARENT_SITE_URL],
 };
 
 export default function MarketingPage() {
@@ -28,10 +31,12 @@ export default function MarketingPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(ORGANIZATION).replace(/</g, '\\u003c') }}
       />
       <header className="px-6 pt-8 flex items-center gap-3">
-        <Logo className="h-5 w-8 text-ink" />
-        <span className="text-[11px] tracking-widest uppercase text-ink/70">
-          Golden Glance Studio
-        </span>
+        <a href={PARENT_SITE_URL} className="flex min-h-11 items-center gap-3 group">
+          <Logo className="h-5 w-8 text-ink" />
+          <span className="text-[11px] tracking-widest uppercase text-ink/70 group-hover:text-ink transition-colors">
+            Golden Glance Studio
+          </span>
+        </a>
       </header>
 
       <section className="flex-1 grid place-items-center px-6 py-16">
@@ -69,7 +74,7 @@ export default function MarketingPage() {
       </section>
 
       <footer className="px-6 py-6 text-center text-[10px] tracking-widest uppercase text-ink/70">
-        Crafted in Toronto ·{' '}
+        Crafted in Toronto by <StudioLink /> ·{' '}
         <a href={mailto('GlanceCam inquiry')} className="inline-flex min-h-11 items-center underline underline-offset-4 decoration-ink/40 hover:decoration-ink">
           {CONTACT_EMAIL}
         </a>

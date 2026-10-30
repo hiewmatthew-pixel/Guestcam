@@ -22,3 +22,7 @@ export function pageMetadata({ title, description, path }: { title: string; desc
     twitter: { card: 'summary_large_image' as const, title: full, description, images: [OG_IMAGE.url] },
   };
 }
+
+/** The studio's main website (GlanceCam is one of its services). */
+export const PARENT_SITE_URL = 'https://www.goldenglancestudio.com';
+export const PARENT_NAME = 'Golden Glance Studio';

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { CONTACT_EMAIL, mailto } from '@/lib/contact';
+import StudioLink from '@/components/StudioLink';
 
 export const LEGAL_UPDATED = 'October 29, 2026';
 
@@ -22,6 +23,7 @@ export default function LegalPage({ title, children }: { title: string; children
       </article>
 
       <footer className="mt-auto px-6 py-8 text-center text-[10px] tracking-widest uppercase text-ink/70 border-t border-warm-gray-light">
+        <p>Crafted in Toronto by <StudioLink /></p>
         <Link href="/terms" className="inline-flex min-h-11 items-center px-2 hover:text-ink">terms</Link>·
         <Link href="/privacy" className="inline-flex min-h-11 items-center px-2 hover:text-ink">privacy</Link>·
         <a href={mailto('GlanceCam question')} className="inline-flex min-h-11 items-center px-2 normal-case tracking-normal hover:text-ink">
