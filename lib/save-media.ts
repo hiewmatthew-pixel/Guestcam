@@ -12,13 +12,24 @@
 // 'needs-tap' and asks the guest to tap once more (the file is ready by
 // then, so the second tap opens instantly).
 
-export type SaveResult = 'shared' | 'downloaded' | 'cancelled' | 'needs-tap' | 'unsupported' | 'failed';
+export type SaveResult = 'shared' | 'downloaded' | 'cancelled' | 'needs-tap' | 'unsupported' | 'failed' | 'in-app';
 
 export function isIOS(): boolean {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent;
   // iPadOS reports itself as a Mac; touch points give it away
   return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1);
+}
+
+/**
+ * In-app browsers (Instagram, Facebook, WhatsApp, the Google app…) on
+ * Android ignore downloads entirely, so "save" would silently do nothing.
+ */
+export function isAndroidInAppBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (!/Android/i.test(ua)) return false;
+  return /\b(FBAN|FBAV|Instagram|Line|WhatsApp|Twitter|TikTok|Snapchat|Pinterest|FB_IAB|GSA)\b/i.test(ua) || /(^|;)\s*wv\s*(;|\))/i.test(ua);
 }
 
 type ShareNav = Navigator & { canShare?: (d: ShareData) => boolean };
@@ -69,6 +80,10 @@ export const photosCanHold = (file: File) => !(isIOS() && /webm/i.test(file.type
 /** Put the capture in the phone's photo library (as close as the web allows). */
 export async function saveToPhotos(file: File): Promise<SaveResult> {
   if (isIOS() && photosCanHold(file) && canShareFiles(file)) return openShareSheet({ files: [file] });
+  if (isAndroidInAppBrowser()) {
+    // downloads are ignored here: hand the file to the share sheet instead
+    return canShareFiles(file) ? openShareSheet({ files: [file] }) : 'in-app';
+  }
   return downloadFile(file);
 }
 
@@ -85,7 +100,9 @@ export function saveMessage(r: SaveResult, kind: 'photo' | 'video'): string {
     case 'downloaded':
       return isIOS()
         ? `${thing} saved to Files › Downloads${kind === 'video' ? ' (this video’s format can’t go in Photos)' : ''}`
-        : `${thing} saved · find it in your Gallery or Photos (Downloads)`;
+        : `${thing} saved · in Gallery it’s in the “Download” album; in Google Photos, Library › Download`;
+    case 'in-app':
+      return 'this app’s browser can’t save files · tap ⋮ and “Open in Chrome”, then save';
     case 'needs-tap':
       return 'ready · tap again to open your phone’s options';
     case 'unsupported':

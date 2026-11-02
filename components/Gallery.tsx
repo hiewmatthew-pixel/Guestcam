@@ -219,9 +219,21 @@ export default function Gallery({
   async function fileFor(it: SubmissionRow): Promise<File> {
     const hit = fileCache.current.get(it.id);
     if (hit) return hit;
-    const res = await fetch(it.media_url);
-    if (!res.ok) throw new Error('fetch failed');
-    const blob = await res.blob();
+    let blob: Blob;
+    if (it.media_url.startsWith('data:')) {
+      // demo captures live inline; decode them directly (fetching data:
+      // URLs is blocked by the page's security policy)
+      const [head, b64] = it.media_url.split(',');
+      const type = /data:([^;]+)/.exec(head)?.[1] ?? 'application/octet-stream';
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      blob = new Blob([bytes], { type });
+    } else {
+      const res = await fetch(it.media_url);
+      if (!res.ok) throw new Error('fetch failed');
+      blob = await res.blob();
+    }
     const who = it.guest_name ? `-${it.guest_name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}` : '';
     const file = fileFrom(blob, `glancecam-${it.media_type}${who}.${extensionFor(it)}`);
     fileCache.current.set(it.id, file);
