@@ -7,6 +7,7 @@ import { FilterId, VERTEX_SHADER, getFilter } from '@/lib/filters';
 import { drawCoupleOverlay } from '@/lib/overlay';
 import { lensesFor, zoomChip, zoomSteps, type Lens } from '@/lib/lenses';
 import { captureBurst, encodeBoomerang, pickVideoMime } from '@/lib/boomerang';
+import { aspectRatio, cropRect, type AspectKey } from '@/lib/aspect';
 
 export type CaptureMode = 'photo' | 'video' | 'boomerang';
 
@@ -28,6 +29,10 @@ type Props = {
   // boomerang burst length (1-3 s) and progress for the parent's UI
   boomerangSeconds?: number;
   onBoomerangState?: (s: BoomerangState | null) => void;
+  // the shape photos / videos / boomerangs are cropped to
+  aspect?: AspectKey;
+  // tells the parent whether the camera frame is upright (for ratio labels)
+  onOrientation?: (portrait: boolean) => void;
 };
 
 export type BoomerangState =
@@ -100,6 +105,14 @@ function classifyError(e: any): CameraError {
 
 const MAX_VIDEO_SECONDS = 15;
 
+/** Largest box of the given ratio centred in the viewfinder (whole area when null). */
+function shapeBox(box: { w: number; h: number }, ratio: number | null): React.CSSProperties {
+  if (!ratio || !box.w || !box.h) return { inset: 0 };
+  const w = Math.min(box.w, box.h * ratio);
+  const h = w / ratio;
+  return { width: w, height: h, left: (box.w - w) / 2, top: (box.h - h) / 2 };
+}
+
 export type FilteredCameraHandle = {
   capturePhoto: () => Promise<Blob | null>;
   startRecording: () => Promise<void>;
@@ -120,6 +133,8 @@ export default function FilteredCamera({
   onWebGLUnavailable,
   boomerangSeconds = 2,
   onBoomerangState,
+  aspect = 'full',
+  onOrientation,
 }: Props) {
   // ref-mirror so the draw loop reads the latest value without
   // re-installing the program on every slider tick
@@ -186,6 +201,31 @@ export default function FilteredCamera({
   const burstCanvasRef = useRef<HTMLCanvasElement>(null);
   const [burstVisible, setBurstVisible] = useState(false);
   const [busy, setBusy] = useState(false); // recording or making a boomerang
+
+  // chosen shape: the viewfinder box is sized to it, and every capture is
+  // cropped to the same centred region
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  const [frame, setFrame] = useState({ w: 0, h: 0 });
+  const portrait = frame.h >= frame.w;
+  const ratio = frame.w ? aspectRatio(aspect, portrait) : null;
+  const ratioRef = useRef<number | null>(ratio);
+  ratioRef.current = ratio;
+  const cropNow = () => {
+    const c = canvasRef.current;
+    return cropRect(c?.width ?? 0, c?.height ?? 0, ratioRef.current);
+  };
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([e]) => setBox({ w: e.contentRect.width, h: e.contentRect.height }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  useEffect(() => {
+    if (frame.w) onOrientation?.(portrait);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portrait, frame.w]);
 
   // flipping sides starts again from that side's default lens
   const facingRef = useRef(facing);
@@ -504,6 +544,7 @@ export default function FilteredCamera({
         if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
+          setFrame({ w: canvas.width, h: canvas.height });
         }
         ctx2d.drawImage(video, 0, 0, canvas.width, canvas.height);
         if (!videoPlayingRef.current) {
@@ -518,6 +559,7 @@ export default function FilteredCamera({
             canvas.width = vw;
             canvas.height = vh;
             gl.viewport(0, 0, vw, vh);
+            setFrame({ w: vw, h: vh });
           }
           gl.bindTexture(gl.TEXTURE_2D, tex);
           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
@@ -549,8 +591,16 @@ export default function FilteredCamera({
   const capturePhoto = useCallback(async (): Promise<Blob | null> => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
+    const r = cropRect(canvas.width, canvas.height, ratioRef.current);
+    let out = canvas;
+    if (r.w !== canvas.width || r.h !== canvas.height) {
+      out = document.createElement('canvas');
+      out.width = r.w;
+      out.height = r.h;
+      out.getContext('2d')?.drawImage(canvas, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+    }
     return new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92);
+      out.toBlob((b) => resolve(b), 'image/jpeg', 0.92);
     });
   }, []);
 
@@ -582,21 +632,25 @@ export default function FilteredCamera({
     const overlayActive =
       !!activeOverlay && (!!activeOverlay.couple_names || !!activeOverlay.wedding_date);
 
-    if (overlayActive) {
+    // the chosen shape is cropped the same way (fixed for the whole clip)
+    const crop = cropRect(webglCanvas.width, webglCanvas.height, ratioRef.current);
+    const cropping = crop.w !== webglCanvas.width || crop.h !== webglCanvas.height;
+
+    if (overlayActive || cropping) {
       if (!outputCanvasRef.current) {
         outputCanvasRef.current = document.createElement('canvas');
       }
       const outCanvas = outputCanvasRef.current;
-      outCanvas.width = webglCanvas.width;
-      outCanvas.height = webglCanvas.height;
+      outCanvas.width = crop.w;
+      outCanvas.height = crop.h;
       const outCtx = outCanvas.getContext('2d');
       if (outCtx) {
         const tick = () => {
           if (!outputCanvasRef.current) return;
           outCtx.clearRect(0, 0, outCanvas.width, outCanvas.height);
-          outCtx.drawImage(webglCanvas, 0, 0, outCanvas.width, outCanvas.height);
+          outCtx.drawImage(webglCanvas, crop.x, crop.y, crop.w, crop.h, 0, 0, outCanvas.width, outCanvas.height);
           const ov = overlayRef.current;
-          if (ov) {
+          if (ov && (ov.couple_names || ov.wedding_date)) {
             drawCoupleOverlay(outCtx, outCanvas.width, outCanvas.height, ov);
           }
           outputRafRef.current = requestAnimationFrame(tick);
@@ -729,6 +783,7 @@ export default function FilteredCamera({
         source,
         preview,
         seconds,
+        crop: cropNow,
         shouldStop: () => boomerangStopRef.current,
         onFrame: (frame, total) => report?.({ phase: 'capturing', frame, total }),
       });
@@ -824,19 +879,23 @@ export default function FilteredCamera({
   }
 
   return (
-    <div className="absolute inset-0 bg-black overflow-hidden">
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 w-full h-full object-cover"
-        style={{ transform: facing === 'user' ? 'scaleX(-1)' : 'none' }}
-      />
-      {/* boomerang: the burst's stills, then the loop as it develops */}
-      <canvas
-        ref={burstCanvasRef}
-        aria-hidden
-        className={`absolute inset-0 w-full h-full object-cover pointer-events-none ${burstVisible ? '' : 'invisible'}`}
-        style={{ transform: facing === 'user' ? 'scaleX(-1)' : 'none' }}
-      />
+    <div ref={containerRef} className="absolute inset-0 bg-black overflow-hidden">
+      {/* the viewfinder takes the chosen shape; object-cover shows exactly
+          the centred crop that's captured */}
+      <div className="absolute overflow-hidden" style={shapeBox(box, ratio)}>
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ transform: facing === 'user' ? 'scaleX(-1)' : 'none' }}
+        />
+        {/* boomerang: the burst's stills, then the loop as it develops */}
+        <canvas
+          ref={burstCanvasRef}
+          aria-hidden
+          className={`absolute inset-0 w-full h-full object-cover pointer-events-none ${burstVisible ? '' : 'invisible'}`}
+          style={{ transform: facing === 'user' ? 'scaleX(-1)' : 'none' }}
+        />
+      </div>
       {/* film grain overlay */}
       <div className="grain absolute inset-0 pointer-events-none" />
 

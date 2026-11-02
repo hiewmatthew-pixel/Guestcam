@@ -65,6 +65,8 @@ export function captureBurst(opts: {
   seconds: number;
   shouldStop?: () => boolean;
   onFrame?: (index: number, total: number) => void;
+  // part of the frame to keep (the guest's chosen shape); whole frame if absent
+  crop?: () => { x: number; y: number; w: number; h: number };
 }): Promise<HTMLCanvasElement[]> {
   const { source, preview, seconds } = opts;
   const total = Math.round(seconds * BOOMERANG_FPS);
@@ -74,11 +76,12 @@ export function captureBurst(opts: {
     const started = performance.now();
     const snap = () => {
       if (!source.width || !source.height) return;
-      const { w, h } = scaledSize(source.width, source.height);
+      const r = opts.crop?.() ?? { x: 0, y: 0, w: source.width, h: source.height };
+      const { w, h } = scaledSize(r.w, r.h);
       const c = document.createElement('canvas');
       c.width = w;
       c.height = h;
-      c.getContext('2d')?.drawImage(source, 0, 0, w, h);
+      c.getContext('2d')?.drawImage(source, r.x, r.y, r.w, r.h, 0, 0, w, h);
       frames.push(c);
       if (preview) {
         if (preview.width !== w || preview.height !== h) {

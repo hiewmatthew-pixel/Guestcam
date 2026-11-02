@@ -28,6 +28,7 @@ import { formatWeddingDate } from '@/lib/dates';
 import { cleanString, LIMITS } from '@/lib/validate';
 import { compositePhoto } from '@/lib/composite';
 import { BOOMERANG_SECONDS, type BoomerangSeconds } from '@/lib/boomerang';
+import { ASPECTS, DEFAULT_ASPECT, aspectLabel, nextAspect, type AspectKey } from '@/lib/aspect';
 import { canShareFiles, fileFrom, isIOS, saveMessage, saveToPhotos, shareCapture, type SaveResult } from '@/lib/save-media';
 import { FRAMES, getFrame, composeFrame, type FrameId } from '@/lib/frames';
 
@@ -74,6 +75,26 @@ export default function EventCapturePage() {
   // boomerang: burst length and live progress (capturing / developing)
   const [boomerangSeconds, setBoomerangSeconds] = useState<BoomerangSeconds>(2);
   const [boomerang, setBoomerang] = useState<BoomerangState | null>(null);
+  // photo / video shape; remembered on this phone
+  const [aspect, setAspect] = useState<AspectKey>(DEFAULT_ASPECT);
+  const [framePortrait, setFramePortrait] = useState(true);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ggc:aspect') as AspectKey | null;
+      if (saved && (ASPECTS as readonly string[]).includes(saved)) setAspect(saved);
+    } catch {
+      /* private mode */
+    }
+  }, []);
+  function cycleAspect() {
+    const next = nextAspect(aspect);
+    setAspect(next);
+    try {
+      localStorage.setItem('ggc:aspect', next);
+    } catch {
+      /* private mode */
+    }
+  }
   // save / share on the review screen
   const [shareNote, setShareNote] = useState<string | null>(null);
   const [canShare, setCanShare] = useState(false);
@@ -802,11 +823,40 @@ export default function EventCapturePage() {
             setTimeout(() => setMicNotice(false), 4000);
           }}
           boomerangSeconds={boomerangSeconds}
+          // booth strips use their own frame shapes
+          aspect={mode === 'booth' ? 'full' : aspect}
+          onOrientation={setFramePortrait}
           onBoomerangState={(b) => {
             setBoomerang(b);
             if (!b) setRecording(false);
           }}
         />
+
+        {/* shape button, like a phone camera's ratio toggle */}
+        {mode !== 'booth' && !boomerang && (
+          <button
+            type="button"
+            onClick={cycleAspect}
+            disabled={recording || !!boomerang}
+            aria-label={`photo shape ${aspectLabel(aspect, framePortrait)}, tap to change`}
+            className="absolute left-3 bottom-3 z-10 min-h-11 min-w-11 inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 text-[11px] font-medium tabular-nums text-cream backdrop-blur-sm disabled:opacity-50 short:bottom-auto short:top-12"
+          >
+            <span
+              aria-hidden
+              className="inline-block border border-cream/90 rounded-[2px]"
+              style={
+                aspect === 'full'
+                  ? { width: 12, height: 12, borderStyle: 'dashed' }
+                  : (() => {
+                      const [a, b] = aspectLabel(aspect, framePortrait).split(':').map(Number);
+                      const s = 14 / Math.max(a, b);
+                      return { width: Math.max(6, a * s), height: Math.max(6, b * s) };
+                    })()
+              }
+            />
+            {aspectLabel(aspect, framePortrait)}
+          </button>
+        )}
 
         {/* boomerang shutter: a soft flash as the burst starts and ends, and a
             quick edge blink on every snap (keyed so each one re-plays) */}
