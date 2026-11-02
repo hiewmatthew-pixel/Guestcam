@@ -28,7 +28,7 @@ import { formatWeddingDate } from '@/lib/dates';
 import { cleanString, LIMITS } from '@/lib/validate';
 import { compositePhoto } from '@/lib/composite';
 import { BOOMERANG_SECONDS, type BoomerangSeconds } from '@/lib/boomerang';
-import { ASPECTS, DEFAULT_ASPECT, aspectLabel, nextAspect, type AspectKey } from '@/lib/aspect';
+import { ASPECTS, DEFAULT_ASPECT, aspectLabel, type AspectKey } from '@/lib/aspect';
 import { canShareFiles, fileFrom, isIOS, saveMessage, saveToPhotos, shareCapture, type SaveResult } from '@/lib/save-media';
 import { FRAMES, getFrame, composeFrame, type FrameId } from '@/lib/frames';
 
@@ -86,9 +86,16 @@ export default function EventCapturePage() {
       /* private mode */
     }
   }, []);
-  function cycleAspect() {
-    const next = nextAspect(aspect);
+  const [aspectOpen, setAspectOpen] = useState(false);
+  useEffect(() => {
+    if (!aspectOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setAspectOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [aspectOpen]);
+  function chooseAspect(next: AspectKey) {
     setAspect(next);
+    setAspectOpen(false);
     try {
       localStorage.setItem('ggc:aspect', next);
     } catch {
@@ -248,6 +255,29 @@ export default function EventCapturePage() {
     }
   }
 
+  // Hardware shutter: Bluetooth selfie remotes and keyboards. Most phones
+  // keep the volume keys for themselves, but where the browser passes one
+  // through it works too. Space/Enter only when no button has focus, so
+  // they don't also press whatever was tapped last.
+  const captureTapRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (stage !== 'capture') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = document.activeElement as HTMLElement | null;
+      const typing = !!el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+      const onControl = !!el && el !== document.body && /^(BUTTON|A)$/.test(el.tagName);
+      const hardware = ['AudioVolumeUp', 'VolumeUp', 'AudioVolumeDown', 'VolumeDown', 'Camera'].includes(e.key);
+      const keyboard = (e.key === ' ' || e.key === 'Enter') && !typing && !onControl;
+      if (!hardware && !keyboard) return;
+      if (typing) return;
+      e.preventDefault();
+      captureTapRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [stage]);
+
   function onCaptureTap() {
     if (mode === 'booth') {
       runBooth();
@@ -259,6 +289,13 @@ export default function EventCapturePage() {
       setRecording((r) => !r);
     }
   }
+
+  captureTapRef.current = () => {
+    // a remote or key press counts as tapping the shutter (not while busy)
+    if (submitting || boomerang?.phase === 'developing' || (mode === 'booth' && boothRunning)) return;
+    setAspectOpen(false);
+    onCaptureTap();
+  };
 
   function handlePhoto(blob: Blob) {
     setShareNote(null);
@@ -832,30 +869,60 @@ export default function EventCapturePage() {
           }}
         />
 
-        {/* shape button, like a phone camera's ratio toggle */}
+        {/* shape picker: the button opens the choices; tap one to pick it */}
         {mode !== 'booth' && !boomerang && (
-          <button
-            type="button"
-            onClick={cycleAspect}
-            disabled={recording || !!boomerang}
-            aria-label={`photo shape ${aspectLabel(aspect, framePortrait)}, tap to change`}
-            className="absolute left-3 bottom-3 z-10 min-h-11 min-w-11 inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 text-[11px] font-medium tabular-nums text-cream backdrop-blur-sm disabled:opacity-50 short:bottom-auto short:top-12"
-          >
-            <span
-              aria-hidden
-              className="inline-block border border-cream/90 rounded-[2px]"
-              style={
-                aspect === 'full'
-                  ? { width: 12, height: 12, borderStyle: 'dashed' }
-                  : (() => {
-                      const [a, b] = aspectLabel(aspect, framePortrait).split(':').map(Number);
-                      const s = 14 / Math.max(a, b);
-                      return { width: Math.max(6, a * s), height: Math.max(6, b * s) };
-                    })()
-              }
-            />
-            {aspectLabel(aspect, framePortrait)}
-          </button>
+          <>
+            {aspectOpen && (
+              // tap anywhere else to close
+              <button
+                type="button"
+                aria-label="close photo shapes"
+                tabIndex={-1}
+                onClick={() => setAspectOpen(false)}
+                className="absolute inset-0 z-10 cursor-default"
+              />
+            )}
+            {aspectOpen && (
+              <div
+                id="shape-options"
+                role="group"
+                aria-label="photo shape"
+                className="absolute left-3 bottom-16 z-20 flex flex-wrap gap-1 rounded-2xl bg-black/70 p-1.5 backdrop-blur-sm max-w-[calc(100%-1.5rem)] short:bottom-auto short:top-24"
+              >
+                {ASPECTS.map((k) => {
+                  const active = k === aspect;
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => chooseAspect(k)}
+                      className={[
+                        'min-h-11 min-w-11 inline-flex flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-1.5 text-[10px] font-medium tabular-nums transition-colors',
+                        active ? 'bg-cream/90 text-ink' : 'text-cream/85 hover:text-cream',
+                      ].join(' ')}
+                    >
+                      <ShapeIcon aspect={k} portrait={framePortrait} />
+                      {aspectLabel(k, framePortrait)}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setAspectOpen((o) => !o)}
+              disabled={recording}
+              aria-expanded={aspectOpen}
+              aria-controls="shape-options"
+              aria-label={`photo shape: ${aspectLabel(aspect, framePortrait)}`}
+              className="absolute left-3 bottom-3 z-20 min-h-11 min-w-11 inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 text-[11px] font-medium tabular-nums text-cream backdrop-blur-sm disabled:opacity-50 short:bottom-auto short:top-12"
+            >
+              <ShapeIcon aspect={aspect} portrait={framePortrait} />
+              {aspectLabel(aspect, framePortrait)}
+              <span aria-hidden className="text-[9px] opacity-80">{aspectOpen ? '▾' : '▴'}</span>
+            </button>
+          </>
         )}
 
         {/* boomerang shutter: a soft flash as the burst starts and ends, and a
@@ -1115,4 +1182,17 @@ export default function EventCapturePage() {
       </div>
     </main>
   );
+}
+
+/** Small outline of a photo shape (dashed square = full frame). */
+function ShapeIcon({ aspect, portrait }: { aspect: AspectKey; portrait: boolean }) {
+  let style: React.CSSProperties;
+  if (aspect === 'full') {
+    style = { width: 12, height: 12, borderStyle: 'dashed' };
+  } else {
+    const [a, b] = aspectLabel(aspect, portrait).split(':').map(Number);
+    const s = 14 / Math.max(a, b);
+    style = { width: Math.max(6, a * s), height: Math.max(6, b * s) };
+  }
+  return <span aria-hidden className="inline-block border border-current rounded-[2px]" style={style} />;
 }
