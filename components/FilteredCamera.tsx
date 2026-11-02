@@ -5,6 +5,8 @@ import { reencodePhoto } from '@/lib/reencode';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FilterId, VERTEX_SHADER, getFilter } from '@/lib/filters';
 import { drawCoupleOverlay } from '@/lib/overlay';
+import { lensesFor, zoomChip, zoomSteps, type Lens } from '@/lib/lenses';
+import { captureBurst, encodeBoomerang, pickVideoMime } from '@/lib/boomerang';
 
 export type CaptureMode = 'photo' | 'video' | 'boomerang';
 
@@ -23,7 +25,14 @@ type Props = {
   onRecorderError?: (msg: string) => void;
   onMicUnavailable?: () => void;
   onWebGLUnavailable?: () => void;
+  // boomerang burst length (1-3 s) and progress for the parent's UI
+  boomerangSeconds?: number;
+  onBoomerangState?: (s: BoomerangState | null) => void;
 };
+
+export type BoomerangState =
+  | { phase: 'capturing'; frame: number; total: number }
+  | { phase: 'developing'; progress: number };
 
 type CameraError = {
   kind:
@@ -90,8 +99,6 @@ function classifyError(e: any): CameraError {
 }
 
 const MAX_VIDEO_SECONDS = 15;
-const MAX_BOOMERANG_SECONDS = 8;
-const MAX_VIDEO_HEIGHT = 720;
 
 export type FilteredCameraHandle = {
   capturePhoto: () => Promise<Blob | null>;
@@ -111,6 +118,8 @@ export default function FilteredCamera({
   onRecorderError,
   onMicUnavailable,
   onWebGLUnavailable,
+  boomerangSeconds = 2,
+  onBoomerangState,
 }: Props) {
   // ref-mirror so the draw loop reads the latest value without
   // re-installing the program on every slider tick
@@ -165,6 +174,25 @@ export default function FilteredCamera({
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [needsTap, setNeedsTap] = useState(false);
   const [inIframe, setInIframe] = useState(false);
+  // lens picker: a specific camera on this side of the phone (null = the
+  // browser's default for `facing`), or zoom steps on a single camera
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [lenses, setLenses] = useState<Lens[]>([]);
+  const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
+  const [zooms, setZooms] = useState<number[]>([]);
+  const [zoom, setZoom] = useState<number>(1);
+  // a boomerang burst is shown on this canvas: stuttering stills while
+  // capturing, then the ping-pong loop while it develops
+  const burstCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [burstVisible, setBurstVisible] = useState(false);
+  const [busy, setBusy] = useState(false); // recording or making a boomerang
+
+  // flipping sides starts again from that side's default lens
+  const facingRef = useRef(facing);
+  if (facingRef.current !== facing) {
+    facingRef.current = facing;
+    if (deviceId !== null) setDeviceId(null);
+  }
 
   useEffect(() => {
     try {
@@ -360,19 +388,24 @@ export default function FilteredCamera({
         videoPlayingRef.current = false;
         setVideoPlaying(false);
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            facingMode: facing,
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-        });
+        const size = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: deviceId ? { deviceId: { exact: deviceId }, ...size } : { facingMode: facing, ...size },
+          });
+        } catch (lensErr) {
+          // a chosen lens can be busy or vanish: fall back to the default
+          if (!deviceId) throw lensErr;
+          stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: facing, ...size } });
+        }
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
         streamRef.current = stream;
+        void detectLenses(stream);
 
         const v = document.createElement('video');
         v.playsInline = true;
@@ -411,6 +444,28 @@ export default function FilteredCamera({
       }
     }
 
+    // labels are only visible once permission is granted, so look after
+    // the camera is open; never let this break the camera itself
+    async function detectLenses(stream: MediaStream) {
+      try {
+        const track = stream.getVideoTracks()[0];
+        setActiveDeviceId(track?.getSettings?.().deviceId ?? null);
+        const all = await navigator.mediaDevices.enumerateDevices();
+        if (cancelled) return;
+        const found = lensesFor(all, facing);
+        setLenses(found);
+        // one camera with a zoom range (common on Android): offer zoom steps
+        const caps = (track?.getCapabilities?.() ?? {}) as { zoom?: { min?: number; max?: number } };
+        const steps = found.length ? [] : zoomSteps(caps.zoom);
+        setZooms(steps);
+        const current = (track?.getSettings?.() as { zoom?: number } | undefined)?.zoom;
+        setZoom(typeof current === 'number' ? current : 1);
+      } catch {
+        setLenses([]);
+        setZooms([]);
+      }
+    }
+
     open();
     return () => {
       cancelled = true;
@@ -421,7 +476,18 @@ export default function FilteredCamera({
         videoRef.current = null;
       }
     };
-  }, [facing]);
+  }, [facing, deviceId]);
+
+  async function applyZoom(z: number) {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: z } as MediaTrackConstraintSet] });
+      setZoom(z);
+    } catch {
+      setZooms([]); // the browser said it could but can't: hide the chips
+    }
+  }
 
   // --- render loop -----------------------------------------------
 
@@ -502,7 +568,7 @@ export default function FilteredCamera({
   const recSessionRef = useRef(0);
   const captureStreamRef = useRef<MediaStream | null>(null);
 
-  const startRecording = useCallback(async (recMode: 'video' | 'boomerang') => {
+  const startRecording = useCallback(async (recMode: 'video') => {
     const webglCanvas = canvasRef.current;
     if (!webglCanvas || recorderRef.current) return;
     const session = ++recSessionRef.current;
@@ -549,11 +615,10 @@ export default function FilteredCamera({
     }
     captureStreamRef.current = captureStream;
 
-    // Attach the microphone only for full video. Boomerangs loop in the
-    // gallery so audio would be jarring; keep them silent. The mic is
-    // requested on demand so the OS mic indicator stays dark during
-    // photo / boomerang capture, and a guest who denies mic permission
-    // can still record a silent video instead of losing the camera.
+    // The mic is requested on demand so the OS mic indicator stays dark
+    // during photo / boomerang capture, and a guest who denies mic
+    // permission can still record a silent video instead of losing the
+    // camera. (Boomerangs are silent stills; see runBoomerang.)
     if (recMode === 'video') {
       try {
         const mic = await navigator.mediaDevices.getUserMedia({
@@ -585,20 +650,7 @@ export default function FilteredCamera({
       }
     }
 
-    // pick a supported mime type
-    const candidates = [
-      'video/mp4;codecs=avc1',
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
-      'video/webm',
-    ];
-    const mimeType = candidates.find((c) => {
-      try {
-        return MediaRecorder.isTypeSupported(c);
-      } catch {
-        return false;
-      }
-    });
+    const mimeType = pickVideoMime();
 
     let recorder: MediaRecorder;
     try {
@@ -611,7 +663,6 @@ export default function FilteredCamera({
       return;
     }
 
-    const isBoomerang = recMode === 'boomerang';
     recordedChunksRef.current = [];
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) recordedChunksRef.current.push(e.data);
@@ -620,16 +671,15 @@ export default function FilteredCamera({
       const type = recorder.mimeType || 'video/webm';
       const blob = new Blob(recordedChunksRef.current, { type });
       recordedChunksRef.current = [];
-      cbRef.current.onVideoCaptured(blob, isBoomerang ? 'boomerang' : 'video');
+      cbRef.current.onVideoCaptured(blob, 'video');
     };
     recorder.start(250);
     recorderRef.current = recorder;
 
-    const cap = isBoomerang ? MAX_BOOMERANG_SECONDS : MAX_VIDEO_SECONDS;
     if (videoStopTimerRef.current) clearTimeout(videoStopTimerRef.current);
     videoStopTimerRef.current = window.setTimeout(() => {
       stopRecordingInternal();
-    }, cap * 1000);
+    }, MAX_VIDEO_SECONDS * 1000);
   }, []);
 
   /** Stop recording. `discard` drops the clip (used on unmount). */
@@ -654,16 +704,82 @@ export default function FilteredCamera({
     captureStreamRef.current = null;
   }, []);
 
+  // --- capture: boomerang ----------------------------------------
+
+  const boomerangStopRef = useRef(false);
+  const boomerangRunningRef = useRef(false);
+  const boomerangCbRef = useRef({ onBoomerangState, boomerangSeconds });
+  boomerangCbRef.current = { onBoomerangState, boomerangSeconds };
+
+  const runBoomerang = useCallback(async () => {
+    const source = canvasRef.current;
+    const preview = burstCanvasRef.current;
+    if (!source || !preview || boomerangRunningRef.current) return;
+    if (!source.width || !source.height) {
+      // camera hasn't drawn a frame yet: nothing to snap
+      boomerangCbRef.current.onBoomerangState?.(null);
+      return;
+    }
+    boomerangRunningRef.current = true;
+    boomerangStopRef.current = false;
+    const { onBoomerangState: report, boomerangSeconds: seconds } = boomerangCbRef.current;
+    setBurstVisible(true);
+    try {
+      const frames = await captureBurst({
+        source,
+        preview,
+        seconds,
+        shouldStop: () => boomerangStopRef.current,
+        onFrame: (frame, total) => report?.({ phase: 'capturing', frame, total }),
+      });
+      report?.({ phase: 'developing', progress: 0 });
+      const blob = await encodeBoomerang({
+        frames,
+        canvas: preview,
+        decorate: (ctx, w, h) => {
+          const ov = overlayRef.current;
+          if (ov && (ov.couple_names || ov.wedding_date)) drawCoupleOverlay(ctx, w, h, ov);
+        },
+        onProgress: (progress) => report?.({ phase: 'developing', progress }),
+      });
+      if (boomerangRunningRef.current) cbRef.current.onVideoCaptured(blob, 'boomerang');
+    } catch (e) {
+      cbRef.current.onRecorderError?.((e as Error)?.message || 'Could not make the boomerang.');
+    } finally {
+      boomerangRunningRef.current = false;
+      setBurstVisible(false);
+      report?.(null);
+    }
+  }, []);
+
   // driven from parent via mode/recording props
   useEffect(() => {
-    if (mode === 'video' || mode === 'boomerang') {
+    if (mode === 'video') {
       if (recording) {
-        startRecording(mode);
+        startRecording('video');
       } else {
         stopRecordingInternal();
       }
+    } else if (mode === 'boomerang') {
+      // tap starts the burst; tapping again ends it early (after 1 s)
+      if (recording) void runBoomerang();
+      else boomerangStopRef.current = true;
     }
-  }, [mode, recording, startRecording, stopRecordingInternal]);
+  }, [mode, recording, startRecording, stopRecordingInternal, runBoomerang]);
+
+  // leaving the camera mid-boomerang: drop it
+  useEffect(
+    () => () => {
+      boomerangStopRef.current = true;
+      boomerangRunningRef.current = false;
+    },
+    [],
+  );
+
+  // lens chips are locked while recording or making a boomerang
+  useEffect(() => {
+    setBusy(recording || burstVisible);
+  }, [recording, burstVisible]);
 
   // leaving the camera mid-recording: drop the clip and free the mic
   useEffect(() => () => stopRecordingInternal(true), [stopRecordingInternal]);
@@ -714,8 +830,70 @@ export default function FilteredCamera({
         className="absolute inset-0 w-full h-full object-cover"
         style={{ transform: facing === 'user' ? 'scaleX(-1)' : 'none' }}
       />
+      {/* boomerang: the burst's stills, then the loop as it develops */}
+      <canvas
+        ref={burstCanvasRef}
+        aria-hidden
+        className={`absolute inset-0 w-full h-full object-cover pointer-events-none ${burstVisible ? '' : 'invisible'}`}
+        style={{ transform: facing === 'user' ? 'scaleX(-1)' : 'none' }}
+      />
       {/* film grain overlay */}
       <div className="grain absolute inset-0 pointer-events-none" />
+
+      {/* lens / zoom picker, like a native camera's 0.5x · 1x · 2x */}
+      {!error && videoPlaying && (lenses.length > 1 || zooms.length > 1) && (
+        <div className="absolute inset-x-0 bottom-3 short:bottom-auto short:top-12 z-10 flex justify-center px-4">
+          <div
+            role="group"
+            aria-label="camera lens"
+            className="flex items-center gap-1 rounded-full bg-black/45 p-1 backdrop-blur-sm"
+          >
+            {lenses.length > 1
+              ? lenses.map((l) => {
+                  // iPhone Pros open on a virtual multi-lens camera: show 1x
+                  const current =
+                    lenses.find((x) => x.deviceId === (deviceId ?? activeDeviceId)) ??
+                    lenses.find((x) => x.kind === 'wide');
+                  const active = current?.deviceId === l.deviceId;
+                  return (
+                    <button
+                      key={l.deviceId}
+                      type="button"
+                      disabled={busy}
+                      aria-pressed={active}
+                      aria-label={`${l.chip} lens (${l.label})`}
+                      onClick={() => !active && setDeviceId(l.deviceId)}
+                      className={[
+                        'min-h-11 min-w-11 rounded-full px-2 text-[11px] font-medium tabular-nums transition-colors disabled:opacity-50',
+                        active ? 'bg-cream/90 text-ink' : 'text-cream/85',
+                      ].join(' ')}
+                    >
+                      {l.chip}
+                    </button>
+                  );
+                })
+              : zooms.map((z) => {
+                  const active = Math.abs(zoom - z) < 0.05;
+                  return (
+                    <button
+                      key={z}
+                      type="button"
+                      disabled={busy}
+                      aria-pressed={active}
+                      aria-label={`zoom ${zoomChip(z)}`}
+                      onClick={() => applyZoom(z)}
+                      className={[
+                        'min-h-11 min-w-11 rounded-full px-2 text-[11px] font-medium tabular-nums transition-colors disabled:opacity-50',
+                        active ? 'bg-cream/90 text-ink' : 'text-cream/85',
+                      ].join(' ')}
+                    >
+                      {zoomChip(z)}
+                    </button>
+                  );
+                })}
+          </div>
+        </div>
+      )}
 
       {filtersOff && !error && videoPlaying && (
         <p

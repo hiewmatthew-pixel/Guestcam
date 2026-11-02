@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { labelForMediaType, tileImageUrl, type SubmissionRow } from '@/lib/supabase';
 import { listFavorites, toggleFavorite } from '@/lib/favorites';
 import { shareMedia, type ShareResult } from '@/lib/share';
+import { canShareFiles, fileFrom, saveMessage, saveToPhotos, shareCapture } from '@/lib/save-media';
 import CommentThread from '@/components/CommentThread';
 import { extensionFor } from '@/lib/media';
 import { filterLabel } from '@/lib/filters';
@@ -74,6 +75,8 @@ export default function Gallery({
   const [favs, setFavs] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  // downloaded originals, so a second tap (or share after save) is instant
+  const fileCache = useRef(new Map<string, File>());
 
   useEffect(() => {
     if (ev) setFavs(listFavorites(ev));
@@ -149,6 +152,14 @@ export default function Gallery({
     setOpenId(it.id);
     setOpenSnapshot(it);
   }, []);
+
+  // phones only open the share sheet straight from a tap, so have the
+  // open photo ready before the guest taps save / share
+  useEffect(() => {
+    if (!open || open.media_type !== 'photo' || fileCache.current.has(open.id)) return;
+    void fileFor(open).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open?.id]);
   const closeLightbox = useCallback(() => {
     setOpenId(null);
     setOpenSnapshot(null);
@@ -204,26 +215,45 @@ export default function Gallery({
     else if (r === 'failed') flash('could not share');
   }
 
-  async function onDownload(it: SubmissionRow) {
-    const ext = extensionFor(it);
+  async function fileFor(it: SubmissionRow): Promise<File> {
+    const hit = fileCache.current.get(it.id);
+    if (hit) return hit;
+    const res = await fetch(it.media_url);
+    if (!res.ok) throw new Error('fetch failed');
+    const blob = await res.blob();
     const who = it.guest_name ? `-${it.guest_name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}` : '';
-    const name = `glance-${it.media_type}${who}.${ext}`;
+    const file = fileFrom(blob, `glancecam-${it.media_type}${who}.${extensionFor(it)}`);
+    fileCache.current.set(it.id, file);
+    return file;
+  }
+
+  // Save into the phone's photos (iPhone: share sheet → Save Image/Video;
+  // Android: download, which Gallery / Photos picks up).
+  async function onDownload(it: SubmissionRow) {
     try {
-      // fetch as blob so it saves rather than navigating (cross-origin URL)
-      const res = await fetch(it.media_url);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
-      flash('saved');
+      const r = await saveToPhotos(await fileFor(it));
+      const msg = r === 'shared' ? 'saved' : saveMessage(r, it.media_type === 'photo' ? 'photo' : 'video');
+      if (msg) flash(msg);
     } catch {
       // fallback: open in a new tab for manual save (e.g. CORS blocked)
       window.open(it.media_url, '_blank', 'noopener,noreferrer');
+    }
+  }
+
+  // Share the actual photo/video to Messages, WhatsApp, Mail…; falls back
+  // to sharing the link where files can't be shared.
+  async function onShareFile(it: SubmissionRow) {
+    if (!canShareFiles()) return onShare(it);
+    try {
+      const who = it.guest_name ? ` by ${it.guest_name}` : '';
+      const r = await shareCapture(await fileFor(it), {
+        title: coupleNames ? `${coupleNames} · guest cam${who}` : `guest cam${who}`,
+      });
+      if (r === 'unsupported') return onShare(it);
+      const msg = saveMessage(r, it.media_type === 'photo' ? 'photo' : 'video');
+      if (msg) flash(msg);
+    } catch {
+      return onShare(it);
     }
   }
 
@@ -350,7 +380,7 @@ export default function Gallery({
           onStep={step}
           favourited={favs.has(open.id)}
           onFavourite={() => onToggleFav(open)}
-          onShare={() => onShare(open)}
+          onShare={() => onShareFile(open)}
           onDownload={() => onDownload(open)}
           eventId={ev}
           showComments={showComments}

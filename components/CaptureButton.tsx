@@ -6,6 +6,7 @@ type Props = {
   mode: 'photo' | 'video' | 'boomerang';
   recording: boolean;
   maxSeconds?: number;
+  disabled?: boolean;
   onTap: () => void;
   onHoldStart?: () => void;
   onHoldEnd?: () => void;
@@ -15,6 +16,7 @@ export default function CaptureButton({
   mode,
   recording,
   maxSeconds = 15,
+  disabled = false,
   onTap,
 }: Props) {
   const [progress, setProgress] = useState(0);
@@ -53,13 +55,14 @@ export default function CaptureButton({
   return (
     <button
       onClick={onTap}
+      disabled={disabled}
       type="button"
       aria-label={
         mode === 'photo'
           ? 'take photo'
           : `${recording ? 'stop' : 'start'} ${mode === 'boomerang' ? 'boomerang' : 'video'}`
       }
-      className="relative grid place-items-center select-none"
+      className="relative grid place-items-center select-none disabled:opacity-50"
       style={{ width: ringSize, height: ringSize }}
     >
       <svg

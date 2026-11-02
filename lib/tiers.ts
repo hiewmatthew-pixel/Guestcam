@@ -103,7 +103,7 @@ export const TIERS: Record<TierId, TierDef> = {
     bullets: [
       'Everything in Glimpse',
       '15-second films with sound',
-      'Eight-second boomerangs (looping)',
+      'Boomerangs: a 1–3 second burst that loops back and forth',
       'All five film filters',
       'Full sticker library',
       'Voice notes — an audio guestbook for shy guests',

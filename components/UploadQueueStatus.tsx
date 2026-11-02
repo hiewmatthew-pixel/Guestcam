@@ -13,6 +13,7 @@ import {
   subscribeQueue,
   type QueueState,
 } from '@/lib/upload-queue';
+import { fileFrom, saveToPhotos } from '@/lib/save-media';
 
 export default function UploadQueueStatus({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
   const [s, setS] = useState<QueueState | null>(null);
@@ -30,33 +31,15 @@ export default function UploadQueueStatus({ tone = 'dark' }: { tone?: 'dark' | '
 
   if (!s || (s.pending === 0 && s.failed === 0 && !justFinished)) return null;
 
-  // One capture per tap: iOS blocks a burst of downloads, so saving them
-  // all at once silently dropped the rest. Prefer the share sheet ("Save
-  // to Photos"); fall back to a download. Removed only once handed over.
+  // One capture per tap: iOS blocks a burst of saves. iPhone saves via the
+  // share sheet ("Save Image/Video" → Photos); Android downloads into the
+  // Gallery. Removed from the queue only once handed over.
   async function saveNextFailed() {
     const it = await firstFailedItem();
     if (!it) return;
-    const name = `glancecam-${it.mediaType}.${it.ext}`;
-    const file = new File([it.blob], name, { type: it.contentType });
-    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-    try {
-      if (nav.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file] });
-        await discardItem(it.id);
-        return;
-      }
-    } catch (e) {
-      if ((e as Error)?.name === 'AbortError') return; // guest closed the sheet: keep it
-    }
-    const url = URL.createObjectURL(file);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    await discardItem(it.id);
+    const file = fileFrom(it.blob, `glancecam-${it.mediaType}.${it.ext}`);
+    const r = await saveToPhotos(file);
+    if (r === 'shared' || r === 'downloaded') await discardItem(it.id);
   }
 
   const base =

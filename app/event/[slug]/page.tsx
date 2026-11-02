@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
-import FilteredCamera, { type CaptureMode } from '@/components/FilteredCamera';
+import FilteredCamera, { type BoomerangState, type CaptureMode } from '@/components/FilteredCamera';
 import FilterSelector from '@/components/FilterSelector';
 import CaptureButton from '@/components/CaptureButton';
 import StickerEditor, { type PlacedSticker } from '@/components/StickerEditor';
@@ -27,6 +27,8 @@ import { getTier } from '@/lib/tiers';
 import { formatWeddingDate } from '@/lib/dates';
 import { cleanString, LIMITS } from '@/lib/validate';
 import { compositePhoto } from '@/lib/composite';
+import { BOOMERANG_SECONDS, type BoomerangSeconds } from '@/lib/boomerang';
+import { canShareFiles, fileFrom, isIOS, saveMessage, saveToPhotos, shareCapture, type SaveResult } from '@/lib/save-media';
 import { FRAMES, getFrame, composeFrame, type FrameId } from '@/lib/frames';
 
 type Stage = 'welcome' | 'capture' | 'review';
@@ -69,6 +71,13 @@ export default function EventCapturePage() {
   const [micNotice, setMicNotice] = useState(false);
   const [submittedOk, setSubmittedOk] = useState(false);
   const [savingLocal, setSavingLocal] = useState(false);
+  // boomerang: burst length and live progress (capturing / developing)
+  const [boomerangSeconds, setBoomerangSeconds] = useState<BoomerangSeconds>(2);
+  const [boomerang, setBoomerang] = useState<BoomerangState | null>(null);
+  // save / share on the review screen
+  const [shareNote, setShareNote] = useState<string | null>(null);
+  const [canShare, setCanShare] = useState(false);
+  const preparedRef = useRef<{ key: string; file: File } | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [voiceSent, setVoiceSent] = useState(false);
   const [demo, setDemo] = useState<boolean>(false);
@@ -225,11 +234,13 @@ export default function EventCapturePage() {
       const fn = (window as any).__ggcCapturePhoto;
       if (typeof fn === 'function') fn();
     } else {
+      if (boomerang?.phase === 'developing') return;
       setRecording((r) => !r);
     }
   }
 
   function handlePhoto(blob: Blob) {
+    setShareNote(null);
     const url = URL.createObjectURL(blob);
     setPendingBlob(blob);
     setPendingType('photo');
@@ -240,6 +251,7 @@ export default function EventCapturePage() {
   }
 
   function handleVideo(blob: Blob, kind: 'video' | 'boomerang') {
+    setShareNote(null);
     const url = URL.createObjectURL(blob);
     setPendingBlob(blob);
     setPendingType(kind);
@@ -257,40 +269,75 @@ export default function EventCapturePage() {
       .slice(0, 40) || 'glance';
   }
 
+  /** The capture as the guest will keep it: stickers and names burned in. */
+  async function buildKeepFile(): Promise<File | null> {
+    if (!pendingBlob || !event) return null;
+    let outBlob = pendingBlob;
+    const ext = extForBlob(pendingBlob, pendingType);
+    if (pendingType === 'photo') {
+      try {
+        outBlob = await compositePhoto(
+          pendingBlob,
+          stickers,
+          { couple_names: event.couple_names, wedding_date: event.wedding_date },
+          { burnCoupleOverlay: tier.features.customCoupleOverlay && !pendingIsCollage },
+        );
+      } catch {
+        // fall back to the raw capture if compositing fails
+      }
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return fileFrom(outBlob, `glancecam-${slugifyName(event.couple_names)}-${stamp}.${ext}`);
+  }
+
+  // Phones only open the share sheet straight from a tap, so the file is
+  // prepared ahead of time (and again after sticker edits).
+  const keepKey = `${pendingUrl}|${JSON.stringify(stickers)}`;
+  useEffect(() => {
+    if (stage !== 'review' || !pendingBlob) return;
+    let live = true;
+    const t = setTimeout(async () => {
+      const file = await buildKeepFile();
+      if (live && file) {
+        preparedRef.current = { key: keepKey, file };
+        setCanShare(canShareFiles(file));
+      }
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, keepKey]);
+
+  async function keepFile(): Promise<File | null> {
+    const ready = preparedRef.current;
+    if (ready && ready.key === keepKey) return ready.file;
+    const file = await buildKeepFile();
+    if (file) preparedRef.current = { key: keepKey, file };
+    return file;
+  }
+
+  function noteFor(r: SaveResult) {
+    const msg = saveMessage(r, pendingType === 'photo' ? 'photo' : 'video');
+    setShareNote(msg || null);
+    if (msg && r !== 'needs-tap') setTimeout(() => setShareNote((n) => (n === msg ? null : n)), 5000);
+  }
+
   async function saveToPhone() {
-    if (!pendingBlob || !event) return;
     setSavingLocal(true);
     try {
-      let outBlob = pendingBlob;
-      let ext = extForBlob(pendingBlob, pendingType);
-      if (pendingType === 'photo') {
-        try {
-          outBlob = await compositePhoto(
-            pendingBlob,
-            stickers,
-            {
-              couple_names: event.couple_names,
-              wedding_date: event.wedding_date,
-            },
-            { burnCoupleOverlay: tier.features.customCoupleOverlay && !pendingIsCollage },
-          );
-        } catch {
-          // fall back to raw blob if composite fails
-        }
-      }
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const fname = `glance-${slugifyName(event.couple_names)}-${stamp}.${ext}`;
-      const url = URL.createObjectURL(outBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fname;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      const file = await keepFile();
+      if (file) noteFor(await saveToPhotos(file));
     } finally {
       setSavingLocal(false);
     }
+  }
+
+  async function shareToApps() {
+    const file = await keepFile();
+    if (!file || !event) return;
+    noteFor(await shareCapture(file, { title: `${event.couple_names} · GlanceCam` }));
   }
 
   // Shared upload+insert path for every capture kind. Uploads with
@@ -640,7 +687,10 @@ export default function EventCapturePage() {
             <video
               src={pendingUrl}
               className="max-h-[max(220px,calc(100dvh-240px))] short:max-h-[62dvh] max-w-full w-auto"
-              controls
+              // a boomerang just loops, silently, like Instagram's
+              controls={pendingType !== 'boomerang'}
+              muted={pendingType === 'boomerang'}
+              aria-label={pendingType === 'boomerang' ? 'your boomerang' : 'your video'}
               autoPlay
               playsInline
               loop
@@ -673,13 +723,28 @@ export default function EventCapturePage() {
               >
                 {submitting ? 'saving…' : sendError ? 'try again' : 'send to the couple'}
               </button>
-              <button
-                onClick={saveToPhone}
-                disabled={submitting || savingLocal}
-                className="mt-2 w-full min-h-11 text-[11px] uppercase tracking-widest text-cream/80 hover:text-cream py-2 disabled:opacity-60"
-              >
-                {savingLocal ? 'preparing…' : 'save to my photos'}
-              </button>
+              <div className={`mt-2 grid gap-2 ${canShare ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <button
+                  onClick={saveToPhone}
+                  disabled={submitting || savingLocal}
+                  className="min-h-11 rounded-sm border border-cream/25 text-[11px] uppercase tracking-widest text-cream/85 hover:text-cream py-2 disabled:opacity-60"
+                >
+                  {savingLocal ? 'preparing…' : '↓ save to photos'}
+                </button>
+                {canShare && (
+                  <button
+                    onClick={shareToApps}
+                    disabled={submitting}
+                    className="min-h-11 rounded-sm border border-cream/25 text-[11px] uppercase tracking-widest text-cream/85 hover:text-cream py-2 disabled:opacity-40"
+                  >
+                    ↗ share
+                  </button>
+                )}
+              </div>
+              <p role="status" aria-live="polite" className="mt-2 min-h-[1rem] text-center text-[11px] text-cream/75">
+                {shareNote ??
+                  (isIOS() ? `tip: choose “Save ${pendingType === 'photo' ? 'Image' : 'Video'}” to add it to Photos` : '')}
+              </p>
             </>
           )}
           </div>
@@ -736,7 +801,28 @@ export default function EventCapturePage() {
             setMicNotice(true);
             setTimeout(() => setMicNotice(false), 4000);
           }}
+          boomerangSeconds={boomerangSeconds}
+          onBoomerangState={(b) => {
+            setBoomerang(b);
+            if (!b) setRecording(false);
+          }}
         />
+
+        {/* boomerang: burst counter, then "developing" while the loop is made */}
+        {boomerang && (
+          <div className="absolute top-3 inset-x-0 z-10 flex justify-center px-4 pointer-events-none">
+            <div role="status" className="flex items-center gap-2 rounded-full bg-ink/80 px-3 py-2 text-[10px] uppercase tracking-widest text-cream">
+              {boomerang.phase === 'capturing' ? (
+                <>
+                  <span aria-hidden className="h-2 w-2 rounded-full bg-red-500 motion-safe:animate-pulse" />
+                  snapping · {boomerang.frame}/{boomerang.total}
+                </>
+              ) : (
+                <>developing your boomerang · {Math.round(boomerang.progress * 100)}%</>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* mic-denied notice — recording continues, just silent */}
         {micNotice && (
@@ -763,7 +849,7 @@ export default function EventCapturePage() {
 
         {/* photobooth: shot progress dots */}
         {mode === 'booth' && (
-          <div className="absolute bottom-3 inset-x-0 flex justify-center gap-2 pointer-events-none">
+          <div className="absolute bottom-16 short:bottom-auto short:top-24 inset-x-0 flex justify-center gap-2 pointer-events-none">
             {Array.from({ length: getFrame(boothLayout).shots }).map((_, i) => (
               <span
                 key={i}
@@ -777,7 +863,7 @@ export default function EventCapturePage() {
         )}
 
         {/* current filter blurb */}
-        <div className="absolute top-3 inset-x-0 text-center pointer-events-none short:hidden">
+        <div className={`absolute top-3 inset-x-0 text-center pointer-events-none short:hidden ${boomerang ? 'invisible' : ''}`}>
           <p className="font-serif italic text-cream/85 text-base">
             {FILTERS.find((f) => f.id === filter)?.label}
           </p>
@@ -905,20 +991,47 @@ export default function EventCapturePage() {
           </div>
         )}
 
+        {mode === 'boomerang' && (
+          <div className="pt-2 short:pt-1 flex justify-center">
+            <div role="group" aria-label="boomerang length" className="flex items-center gap-1.5">
+              {BOOMERANG_SECONDS.map((n) => {
+                const active = boomerangSeconds === n;
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    disabled={!!boomerang}
+                    aria-pressed={active}
+                    aria-label={`${n} second boomerang`}
+                    onClick={() => setBoomerangSeconds(n)}
+                    className={[
+                      'min-h-11 min-w-11 px-3 rounded-full border text-[11px] uppercase tracking-wider transition-colors disabled:opacity-50',
+                      active ? 'border-gold bg-gold/15 text-gold' : 'border-cream/20 text-cream/65 hover:text-cream',
+                    ].join(' ')}
+                  >
+                    {n}s
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="px-6 pt-3 short:pt-0 grid grid-cols-3 items-center">
           {/* left spacer keeps the capture button visually centered */}
           <span className="text-[10px] uppercase tracking-widest text-cream/70">
             {mode === 'photo' && 'still'}
             {mode === 'booth' && `${getFrame(boothLayout).shots} shots · ${boothTimer}s`}
             {mode === 'video' && 'up to 15s'}
-            {mode === 'boomerang' && 'loop · 8s'}
+            {mode === 'boomerang' && `loop · ${boomerangSeconds}s`}
           </span>
 
           <div className="flex justify-center short:-my-2.5 short:scale-[0.72]">
             <CaptureButton
               mode={cameraMode}
-              recording={recording || boothRunning}
-              maxSeconds={mode === 'boomerang' ? 8 : 15}
+              maxSeconds={mode === 'boomerang' ? boomerangSeconds : 15}
+              recording={mode === 'boomerang' ? boomerang?.phase === 'capturing' : recording || boothRunning}
+              disabled={boomerang?.phase === 'developing'}
               onTap={onCaptureTap}
             />
           </div>
