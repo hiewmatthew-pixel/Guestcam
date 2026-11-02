@@ -63,9 +63,12 @@ export function downloadFile(file: File): SaveResult {
   }
 }
 
+/** iPhone Photos can't hold WebM video (some Android phones record it). */
+export const photosCanHold = (file: File) => !(isIOS() && /webm/i.test(file.type));
+
 /** Put the capture in the phone's photo library (as close as the web allows). */
 export async function saveToPhotos(file: File): Promise<SaveResult> {
-  if (isIOS() && canShareFiles(file)) return openShareSheet({ files: [file] });
+  if (isIOS() && photosCanHold(file) && canShareFiles(file)) return openShareSheet({ files: [file] });
   return downloadFile(file);
 }
 
@@ -81,7 +84,7 @@ export function saveMessage(r: SaveResult, kind: 'photo' | 'video'): string {
   switch (r) {
     case 'downloaded':
       return isIOS()
-        ? `${thing} saved to Files › Downloads`
+        ? `${thing} saved to Files › Downloads${kind === 'video' ? ' (this video’s format can’t go in Photos)' : ''}`
         : `${thing} saved · find it in your Gallery or Photos (Downloads)`;
     case 'needs-tap':
       return 'ready · tap again to open your phone’s options';

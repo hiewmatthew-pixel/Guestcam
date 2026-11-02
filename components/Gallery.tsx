@@ -154,9 +154,10 @@ export default function Gallery({
   }, []);
 
   // phones only open the share sheet straight from a tap, so have the
-  // open photo ready before the guest taps save / share
+  // open capture's file ready before the guest taps save / share (voice
+  // notes aren't saved to Photos)
   useEffect(() => {
-    if (!open || open.media_type !== 'photo' || fileCache.current.has(open.id)) return;
+    if (!open || open.media_type === 'voice' || fileCache.current.has(open.id)) return;
     void fileFor(open).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open?.id]);
@@ -752,7 +753,7 @@ function Lightbox({
                   glyph={favourited ? '♥' : '♡'}
                 />
                 <ActionButton onClick={onShare} label="share" glyph="↗" />
-                <ActionButton onClick={onDownload} label="download" glyph="↓" />
+                <ActionButton onClick={onDownload} label="save" glyph="↓" />
               </div>
             </div>
           </div>
