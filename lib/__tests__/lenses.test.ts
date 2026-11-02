@@ -13,7 +13,7 @@ describe('lensesFor', () => {
       dev('w', 'Back Camera'),
       dev('tele', 'Back Telephoto Camera'),
     ];
-    expect(lensesFor(iphone, 'environment').map((l) => `${l.deviceId}:${l.chip}`)).toEqual(['u:0.5×', 'w:1×', 'tele:zoom']);
+    expect(lensesFor(iphone, 'environment').map((l) => `${l.deviceId}:${l.chip}`)).toEqual(['u:wide', 'w:1×', 'tele:zoom']);
     // only one front camera: nothing to choose
     expect(lensesFor(iphone, 'user')).toEqual([]);
   });

@@ -56,7 +56,8 @@ export function lensesFor(devices: { deviceId: string; label: string; kind?: str
   }
   return named
     .sort((a, b) => ORDER[a.kind] - ORDER[b.kind])
-    .map((l) => ({ ...l, chip: l.kind === 'ultra' ? '0.5×' : l.kind === 'tele' ? 'zoom' : l.kind === 'wide' ? '1×' : 'lens' }));
+    // the ultra-wide (0.5x on iPhone) is what guests call "wide"
+    .map((l) => ({ ...l, chip: l.kind === 'ultra' ? 'wide' : l.kind === 'tele' ? 'zoom' : l.kind === 'wide' ? '1×' : 'lens' }));
 }
 
 function cameraIndex(label: string): number {
@@ -75,4 +76,5 @@ export function zoomSteps(range: { min?: number; max?: number } | undefined): nu
   return [...steps].filter((z) => z >= range.min! && z <= range.max!).sort((a, b) => a - b);
 }
 
-export const zoomChip = (z: number) => `${Number.isInteger(z) ? z : z.toFixed(1)}×`;
+/** Below 1x is the ultra-wide lens: labelled "wide", like the iPhone chips. */
+export const zoomChip = (z: number) => (z < 1 ? 'wide' : `${Number.isInteger(z) ? z : z.toFixed(1)}×`);

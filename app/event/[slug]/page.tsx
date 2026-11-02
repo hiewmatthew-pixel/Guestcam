@@ -815,7 +815,7 @@ export default function EventCapturePage() {
               {boomerang.phase === 'capturing' ? (
                 <>
                   <span aria-hidden className="h-2 w-2 rounded-full bg-red-500 motion-safe:animate-pulse" />
-                  snapping · {boomerang.frame}/{boomerang.total}
+                  boomerang
                 </>
               ) : (
                 <>developing your boomerang · {Math.round(boomerang.progress * 100)}%</>

@@ -880,7 +880,7 @@ export default function FilteredCamera({
                       type="button"
                       disabled={busy}
                       aria-pressed={active}
-                      aria-label={`zoom ${zoomChip(z)}`}
+                      aria-label={z < 1 ? `wide (${z}x)` : `zoom ${zoomChip(z)}`}
                       onClick={() => applyZoom(z)}
                       className={[
                         'min-h-11 min-w-11 rounded-full px-2 text-[11px] font-medium tabular-nums transition-colors disabled:opacity-50',
