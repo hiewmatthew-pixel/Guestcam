@@ -248,8 +248,8 @@ export default function Gallery({
       const msg = r === 'shared' ? 'saved' : saveMessage(r, it.media_type === 'photo' ? 'photo' : 'video');
       if (msg) flash(msg);
     } catch {
-      // fallback: open in a new tab for manual save (e.g. CORS blocked)
-      window.open(it.media_url, '_blank', 'noopener,noreferrer');
+      // never bounce the guest to a new tab: say so and let them retry
+      flash('couldn’t save that one · please try again');
     }
   }
 
