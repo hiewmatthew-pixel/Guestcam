@@ -87,12 +87,40 @@ export default function EventCapturePage() {
     }
   }, []);
   const [aspectOpen, setAspectOpen] = useState(false);
+  // advanced shutter options, remembered on this phone
+  const [advOpen, setAdvOpen] = useState(false);
+  const [tapToShoot, setTapToShoot] = useState(false);
+  const [selfTimer, setSelfTimer] = useState<0 | 3 | 10>(0);
+  const [timerCount, setTimerCount] = useState<number | null>(null);
+  const timerRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!aspectOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setAspectOpen(false);
+    try {
+      setTapToShoot(localStorage.getItem('ggc:tap-to-shoot') === '1');
+      const t = Number(localStorage.getItem('ggc:self-timer'));
+      if (t === 3 || t === 10) setSelfTimer(t);
+    } catch {
+      /* private mode */
+    }
+  }, []);
+  function saveOption(key: string, value: string) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      /* private mode */
+    }
+  }
+  function cancelTimer() {
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = null;
+    setTimerCount(null);
+  }
+  useEffect(() => cancelTimer, []);
+  useEffect(() => {
+    if (!aspectOpen && !advOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && (setAspectOpen(false), setAdvOpen(false));
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [aspectOpen]);
+  }, [aspectOpen, advOpen]);
   function chooseAspect(next: AspectKey) {
     setAspect(next);
     setAspectOpen(false);
@@ -279,6 +307,24 @@ export default function EventCapturePage() {
   }, [stage]);
 
   function onCaptureTap() {
+    const starting = mode === 'photo' || ((mode === 'video' || mode === 'boomerang') && !recording);
+    if (selfTimer && starting) {
+      // a second press during the countdown cancels it
+      if (timerCount !== null) return cancelTimer();
+      let n = selfTimer;
+      setTimerCount(n);
+      timerRef.current = window.setInterval(() => {
+        n -= 1;
+        if (n > 0) return setTimerCount(n);
+        cancelTimer();
+        shoot();
+      }, 1000);
+      return;
+    }
+    shoot();
+  }
+
+  function shoot() {
     if (mode === 'booth') {
       runBooth();
     } else if (mode === 'photo') {
@@ -294,6 +340,7 @@ export default function EventCapturePage() {
     // a remote or key press counts as tapping the shutter (not while busy)
     if (submitting || boomerang?.phase === 'developing' || (mode === 'booth' && boothRunning)) return;
     setAspectOpen(false);
+    setAdvOpen(false);
     onCaptureTap();
   };
 
@@ -911,7 +958,10 @@ export default function EventCapturePage() {
             )}
             <button
               type="button"
-              onClick={() => setAspectOpen((o) => !o)}
+              onClick={() => {
+                setAdvOpen(false);
+                setAspectOpen((o) => !o);
+              }}
               disabled={recording}
               aria-expanded={aspectOpen}
               aria-controls="shape-options"
@@ -970,6 +1020,125 @@ export default function EventCapturePage() {
         {/* photobooth: capture flash */}
         {boothFlash && (
           <div className="absolute inset-0 bg-cream pointer-events-none" />
+        )}
+
+        {/* tap anywhere on the picture to shoot (advanced option) */}
+        {tapToShoot && !aspectOpen && !advOpen && (
+          <button
+            type="button"
+            aria-label={mode === 'photo' ? 'take photo (tap anywhere)' : 'shutter (tap anywhere)'}
+            onClick={() => captureTapRef.current()}
+            className="absolute inset-0 z-[5] cursor-pointer"
+          />
+        )}
+
+        {/* self-timer countdown */}
+        {timerCount !== null && (
+          <div className="absolute inset-0 z-10 grid place-items-center pointer-events-none">
+            <div className="text-center">
+              <span role="timer" className="block font-serif text-cream text-[9rem] leading-none drop-shadow-[0_2px_12px_rgba(0,0,0,0.5)]">
+                {timerCount}
+              </span>
+              <span className="mt-2 block text-[10px] uppercase tracking-widest text-cream/80">tap the shutter to cancel</span>
+            </div>
+          </div>
+        )}
+
+        {/* advanced options: tap-anywhere shutter, self-timer, remote tip */}
+        {!boomerang && (
+          <>
+            {advOpen && (
+              <button
+                type="button"
+                aria-label="close camera options"
+                tabIndex={-1}
+                onClick={() => setAdvOpen(false)}
+                className="absolute inset-0 z-10 cursor-default"
+              />
+            )}
+            {advOpen && (
+              <div
+                id="camera-options"
+                role="group"
+                aria-label="camera options"
+                className="absolute right-3 bottom-16 z-20 w-64 max-w-[calc(100%-1.5rem)] rounded-2xl bg-black/75 p-3 text-cream backdrop-blur-sm short:bottom-auto short:top-24"
+              >
+                <p className="text-[10px] uppercase tracking-widest text-cream/70">camera options</p>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={tapToShoot}
+                  onClick={() => {
+                    setTapToShoot(!tapToShoot);
+                    saveOption('ggc:tap-to-shoot', tapToShoot ? '0' : '1');
+                  }}
+                  className="mt-2 flex min-h-11 w-full items-center justify-between gap-3 text-left text-[12px]"
+                >
+                  <span>
+                    tap anywhere to shoot
+                    <span className="block text-[10px] text-cream/65">the whole picture is the shutter</span>
+                  </span>
+                  <span
+                    aria-hidden
+                    className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${tapToShoot ? 'bg-gold' : 'bg-cream/25'}`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-cream shadow transition-all ${tapToShoot ? 'left-[1.125rem]' : 'left-0.5'}`}
+                    />
+                  </span>
+                </button>
+                {mode !== 'booth' && (
+                  <div className="mt-2">
+                    <p id="timer-label" className="text-[12px]">self-timer</p>
+                    <div role="group" aria-labelledby="timer-label" className="mt-1 flex gap-1">
+                      {([0, 3, 10] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          aria-pressed={selfTimer === t}
+                          onClick={() => {
+                            setSelfTimer(t);
+                            saveOption('ggc:self-timer', String(t));
+                          }}
+                          className={[
+                            'min-h-11 flex-1 rounded-lg text-[11px] tabular-nums transition-colors',
+                            selfTimer === t ? 'bg-cream/90 text-ink font-medium' : 'border border-cream/20 text-cream/85',
+                          ].join(' ')}
+                        >
+                          {t === 0 ? 'off' : `${t}s`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <p className="mt-3 border-t border-cream/15 pt-2 text-[10px] leading-relaxed text-cream/70">
+                  Have a Bluetooth selfie remote? Pair it with your phone and press it to shoot.
+                  (Phones don’t let websites use the volume buttons.)
+                </p>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setAspectOpen(false);
+                setAdvOpen((o) => !o);
+              }}
+              disabled={recording || timerCount !== null}
+              aria-expanded={advOpen}
+              aria-controls="camera-options"
+              className="absolute right-3 bottom-3 z-20 min-h-11 min-w-11 inline-flex items-center justify-center gap-1 rounded-full bg-black/45 px-3 text-[12px] text-cream backdrop-blur-sm disabled:opacity-50 short:bottom-auto short:top-12"
+            >
+              <span aria-hidden>⚙</span>
+              <span className="sr-only">camera options</span>
+              {(tapToShoot || selfTimer > 0) && (
+                <span className="text-[10px] tabular-nums">
+                  {selfTimer ? `${selfTimer}s` : ''}
+                  {tapToShoot && selfTimer ? ' · ' : ''}
+                  {tapToShoot ? 'tap' : ''}
+                </span>
+              )}
+            </button>
+          </>
         )}
 
         {/* photobooth: big countdown number */}
