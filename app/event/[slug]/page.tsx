@@ -808,7 +808,24 @@ export default function EventCapturePage() {
           }}
         />
 
-        {/* boomerang: burst counter, then "developing" while the loop is made */}
+        {/* boomerang shutter: a soft flash as the burst starts and ends, and a
+            quick edge blink on every snap (keyed so each one re-plays) */}
+        {boomerang?.phase === 'capturing' && (
+          <div
+            key={`snap-${boomerang.frame}`}
+            aria-hidden
+            className="snap-blink absolute inset-0 z-10 pointer-events-none shadow-[inset_0_0_0_6px_rgba(245,241,234,0.95)]"
+          />
+        )}
+        {boomerang && (
+          <div
+            key={boomerang.phase}
+            aria-hidden
+            className="shutter-flash absolute inset-0 z-10 bg-cream/70 pointer-events-none"
+          />
+        )}
+
+        {/* boomerang: status while capturing, then "developing" while the loop is made */}
         {boomerang && (
           <div className="absolute top-3 inset-x-0 z-10 flex justify-center px-4 pointer-events-none">
             <div role="status" className="flex items-center gap-2 rounded-full bg-ink/80 px-3 py-2 text-[10px] uppercase tracking-widest text-cream">
