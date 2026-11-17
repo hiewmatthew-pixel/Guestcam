@@ -36,63 +36,79 @@ type Props = {
 
 const MAX_STICKERS = 5;
 const MIN_SCALE = 0.3;
-const MAX_SCALE = 2.5;
+const MAX_SCALE = 4;
+const START_SCALE = 1;
+const ROTATE_STEP = Math.PI / 12; // 15°
+// On-screen size at scale 1, as a share of the photo's height. lib/composite
+// uses the same proportions (110/800 for emoji, 140/800 for stickers), so
+// what the guest sees is what gets saved.
+const EMOJI_UNIT = 110 / 800;
+const STICKER_UNIT = 140 / 800;
+
+const clampScale = (v: number) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, v));
 
 function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
-function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-function angle(a: { x: number; y: number }, b: { x: number; y: number }) {
-  return Math.atan2(b.y - a.y, b.x - a.x);
-}
+type Pt = { x: number; y: number };
+const distance = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
+const angle = (a: Pt, b: Pt) => Math.atan2(b.y - a.y, b.x - a.x);
+
+// What the pointers on the photo are doing right now.
+type Gesture =
+  | { mode: 'idle' }
+  | { mode: 'tap-photo'; start: Pt } // may become a deselect
+  | { mode: 'drag'; uid: string; start: Pt; origX: number; origY: number }
+  | { mode: 'pinch'; uid: string; dist: number; ang: number; scale: number; rotation: number }
+  | { mode: 'handle'; uid: string; center: Pt; dist: number; ang: number; scale: number; rotation: number };
 
 export default function StickerEditor({ src, set, event, initial, onChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
   const [placed, setPlaced] = useState<PlacedSticker[]>(initial ?? []);
   const [activeUid, setActiveUid] = useState<string | null>(null);
   const [trayOpen, setTrayOpen] = useState(false);
+  const [photoH, setPhotoH] = useState(0);
 
   const library = useMemo(() => getStickersForSet(set), [set]);
+  const active = placed.find((p) => p.uid === activeUid) ?? null;
 
   useEffect(() => {
     onChange?.(placed);
   }, [placed, onChange]);
 
-  function addSticker(s: StickerDef) {
+  // stickers are sized against the photo as shown, so track its height
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    const update = () => setPhotoH(img.getBoundingClientRect().height);
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(update);
+    ro.observe(img);
+    return () => ro.disconnect();
+  }, [src]);
+
+  function place(sticker: { kind: 'library'; id: StickerId } | { kind: 'emoji'; emoji: string }) {
     if (placed.length >= MAX_STICKERS) return;
-    const next: PlacedSticker = {
-      uid: uid(),
-      kind: 'library',
-      id: s.id,
-      x: 0.5,
-      y: 0.5,
-      scale: 0.6,
-      rotation: 0,
-    };
+    const next = { ...sticker, uid: uid(), x: 0.5, y: 0.5, scale: START_SCALE, rotation: 0 } as PlacedSticker;
     setPlaced((p) => [...p, next]);
     setActiveUid(next.uid);
     setTrayOpen(false);
   }
 
+  function addSticker(s: StickerDef) {
+    place({ kind: 'library', id: s.id });
+  }
+
   function addEmoji(emoji: string) {
-    if (placed.length >= MAX_STICKERS) return;
     const trimmed = emoji.trim();
-    if (!trimmed) return;
-    const next: PlacedSticker = {
-      uid: uid(),
-      kind: 'emoji',
-      emoji: trimmed,
-      x: 0.5,
-      y: 0.5,
-      scale: 0.6,
-      rotation: 0,
-    };
-    setPlaced((p) => [...p, next]);
-    setActiveUid(next.uid);
-    setTrayOpen(false);
+    if (trimmed) place({ kind: 'emoji', emoji: trimmed });
+  }
+
+  function update(uidToChange: string, patch: Partial<Pick<PlacedSticker, 'x' | 'y' | 'scale' | 'rotation'>>) {
+    setPlaced((arr) => arr.map((s) => (s.uid === uidToChange ? ({ ...s, ...patch } as PlacedSticker) : s)));
   }
 
   function removeSticker(uidToRemove: string) {
@@ -105,130 +121,106 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
     setActiveUid(null);
   }
 
-  // pointer/touch handling for a single sticker
-  const dragStateRef = useRef<{
-    uid: string;
-    startX: number;
-    startY: number;
-    origX: number;
-    origY: number;
-    twoFingers: boolean;
-    initialDistance: number;
-    initialAngle: number;
-    initialScale: number;
-    initialRotation: number;
-    points: Map<number, { x: number; y: number }>;
-  } | null>(sloppy());
+  // --- gestures ---------------------------------------------------------
+  // One finger on a sticker moves it. Two fingers ANYWHERE on the photo
+  // resize + rotate the selected sticker (no need to land both on a small
+  // emoji). The ⤡ corner handle does the same with one finger or a mouse.
+  const pointers = useRef(new Map<number, Pt>());
+  const gesture = useRef<Gesture>({ mode: 'idle' });
 
-  function sloppy(): null { return null; }
-
-  function rectOf(): DOMRect | null {
-    return containerRef.current?.getBoundingClientRect() ?? null;
+  function startPinch(targetUid: string) {
+    const s = placed.find((p) => p.uid === targetUid);
+    const [a, b] = Array.from(pointers.current.values());
+    if (!s || !a || !b) return;
+    gesture.current = { mode: 'pinch', uid: targetUid, dist: distance(a, b), ang: angle(a, b), scale: s.scale, rotation: s.rotation };
   }
 
-  function onPointerDown(e: React.PointerEvent, uidStart: string) {
-    e.stopPropagation();
-    setActiveUid(uidStart);
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    const rect = rectOf();
-    if (!rect) return;
-    const s = placed.find((p) => p.uid === uidStart);
-    if (!s) return;
-    const points =
-      dragStateRef.current?.uid === uidStart
-        ? dragStateRef.current.points
-        : new Map<number, { x: number; y: number }>();
-    points.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-    if (points.size === 2) {
-      const [a, b] = Array.from(points.values());
-      dragStateRef.current = {
-        uid: uidStart,
-        startX: 0,
-        startY: 0,
-        origX: s.x,
-        origY: s.y,
-        twoFingers: true,
-        initialDistance: distance(a, b),
-        initialAngle: angle(a, b),
-        initialScale: s.scale,
-        initialRotation: s.rotation,
-        points,
-      };
-    } else {
-      dragStateRef.current = {
-        uid: uidStart,
-        startX: e.clientX,
-        startY: e.clientY,
-        origX: s.x,
-        origY: s.y,
-        twoFingers: false,
-        initialDistance: 0,
-        initialAngle: 0,
-        initialScale: s.scale,
-        initialRotation: s.rotation,
-        points,
-      };
+  function onPointerDown(e: React.PointerEvent) {
+    const pt = { x: e.clientX, y: e.clientY };
+    pointers.current.set(e.pointerId, pt);
+    try {
+      containerRef.current?.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
     }
+    const target = e.target as HTMLElement;
+    const handleUid = target.closest<HTMLElement>('[data-handle]')?.dataset.handle;
+    const stickerUid = target.closest<HTMLElement>('[data-uid]')?.dataset.uid;
+
+    if (pointers.current.size >= 2) {
+      const g = gesture.current;
+      const targetUid = g.mode === 'drag' || g.mode === 'handle' ? g.uid : activeUid;
+      if (targetUid) startPinch(targetUid);
+      return;
+    }
+    if (handleUid) {
+      const s = placed.find((p) => p.uid === handleUid);
+      const el = containerRef.current?.querySelector<HTMLElement>(`[data-uid="${handleUid}"]`);
+      if (!s || !el) return;
+      const r = el.getBoundingClientRect();
+      const center = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      gesture.current = {
+        mode: 'handle',
+        uid: handleUid,
+        center,
+        dist: Math.max(distance(center, pt), 1),
+        ang: angle(center, pt),
+        scale: s.scale,
+        rotation: s.rotation,
+      };
+      return;
+    }
+    if (stickerUid) {
+      const s = placed.find((p) => p.uid === stickerUid);
+      if (!s) return;
+      setActiveUid(stickerUid);
+      gesture.current = { mode: 'drag', uid: stickerUid, start: pt, origX: s.x, origY: s.y };
+      return;
+    }
+    gesture.current = { mode: 'tap-photo', start: pt };
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    const drag = dragStateRef.current;
-    if (!drag) return;
-    if (!drag.points.has(e.pointerId)) return;
-    drag.points.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    const rect = rectOf();
-    if (!rect) return;
-
-    if (drag.points.size >= 2 && !drag.twoFingers) {
-      // upgrade to two-finger gesture
-      const [a, b] = Array.from(drag.points.values());
-      drag.twoFingers = true;
-      drag.initialDistance = distance(a, b);
-      drag.initialAngle = angle(a, b);
-      const cur = placed.find((p) => p.uid === drag.uid);
-      drag.initialScale = cur?.scale ?? 1;
-      drag.initialRotation = cur?.rotation ?? 0;
-    }
-
-    if (drag.twoFingers && drag.points.size >= 2) {
-      const [a, b] = Array.from(drag.points.values());
-      const d = distance(a, b);
-      const ang = angle(a, b);
-      const newScale = Math.max(
-        MIN_SCALE,
-        Math.min(MAX_SCALE, drag.initialScale * (d / Math.max(drag.initialDistance, 1))),
-      );
-      const newRot = drag.initialRotation + (ang - drag.initialAngle);
-      setPlaced((arr) =>
-        arr.map((s) => (s.uid === drag.uid ? { ...s, scale: newScale, rotation: newRot } : s)),
-      );
-    } else {
-      const dx = (e.clientX - drag.startX) / rect.width;
-      const dy = (e.clientY - drag.startY) / rect.height;
-      const nx = Math.max(0, Math.min(1, drag.origX + dx));
-      const ny = Math.max(0, Math.min(1, drag.origY + dy));
-      setPlaced((arr) =>
-        arr.map((s) => (s.uid === drag.uid ? { ...s, x: nx, y: ny } : s)),
-      );
+    if (!pointers.current.has(e.pointerId)) return;
+    const pt = { x: e.clientX, y: e.clientY };
+    pointers.current.set(e.pointerId, pt);
+    const g = gesture.current;
+    if (g.mode === 'pinch' && pointers.current.size >= 2) {
+      const [a, b] = Array.from(pointers.current.values());
+      update(g.uid, {
+        scale: clampScale(g.scale * (distance(a, b) / Math.max(g.dist, 1))),
+        rotation: g.rotation + (angle(a, b) - g.ang),
+      });
+    } else if (g.mode === 'handle') {
+      update(g.uid, {
+        scale: clampScale(g.scale * (distance(g.center, pt) / g.dist)),
+        rotation: g.rotation + (angle(g.center, pt) - g.ang),
+      });
+    } else if (g.mode === 'drag') {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      update(g.uid, {
+        x: Math.max(0, Math.min(1, g.origX + (pt.x - g.start.x) / rect.width)),
+        y: Math.max(0, Math.min(1, g.origY + (pt.y - g.start.y) / rect.height)),
+      });
     }
   }
 
   function onPointerUp(e: React.PointerEvent) {
-    const drag = dragStateRef.current;
-    if (!drag) return;
-    drag.points.delete(e.pointerId);
-    if (drag.points.size === 0) {
-      dragStateRef.current = null;
-    } else if (drag.points.size < 2) {
-      drag.twoFingers = false;
-      // reset baseline for whichever pointer remains
-      const [remain] = Array.from(drag.points.values());
-      drag.startX = remain.x;
-      drag.startY = remain.y;
-      const cur = placed.find((p) => p.uid === drag.uid);
-      drag.origX = cur?.x ?? 0.5;
-      drag.origY = cur?.y ?? 0.5;
+    const last = pointers.current.get(e.pointerId);
+    pointers.current.delete(e.pointerId);
+    const g = gesture.current;
+    if (pointers.current.size === 0) {
+      // a plain tap on the photo (no drag, no pinch) puts the sticker down
+      if (g.mode === 'tap-photo' && last && distance(last, g.start) < 8) setActiveUid(null);
+      gesture.current = { mode: 'idle' };
+      return;
+    }
+    if (g.mode === 'pinch') {
+      // one finger still down: carry on moving from where it is
+      const [remain] = Array.from(pointers.current.values());
+      const s = placed.find((p) => p.uid === g.uid);
+      gesture.current = s ? { mode: 'drag', uid: g.uid, start: remain, origX: s.x, origY: s.y } : { mode: 'idle' };
     }
   }
 
@@ -238,29 +230,39 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
     return <img src={src} alt="" className="max-h-[max(200px,calc(100dvh-340px))] short:max-h-[55dvh] max-w-full w-auto" />;
   }
 
+  const describeSticker = (s: PlacedSticker) =>
+    s.kind === 'emoji' ? s.emoji : library.find((l) => l.id === s.id)?.label ?? 'sticker';
+
   return (
     <div className="relative inline-block max-w-full">
       <div
         ref={containerRef}
-        className="relative block w-fit mx-auto max-w-full"
-        onPointerDown={() => setActiveUid(null)}
+        className="relative block w-fit mx-auto max-w-full select-none"
+        style={{ touchAction: placed.length ? 'none' : 'auto' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
+          ref={imgRef}
           src={src}
           alt=""
+          onLoad={(e) => setPhotoH(e.currentTarget.getBoundingClientRect().height)}
           className="block max-h-[max(200px,calc(100dvh-340px))] short:max-h-[55dvh] max-w-full w-auto pointer-events-none select-none"
           draggable={false}
         />
 
         {placed.map((s) => {
           const isActive = activeUid === s.uid;
+          const h = photoH || 400;
           let inner: React.ReactNode = null;
           if (s.kind === 'emoji') {
             inner = (
               <span
                 className="block select-none pointer-events-none leading-none"
-                style={{ fontSize: 110 }}
+                style={{ fontSize: h * EMOJI_UNIT * s.scale }}
               >
                 {s.emoji}
               </span>
@@ -275,47 +277,126 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
                 src={url}
                 alt={def.label}
                 draggable={false}
-                className="block select-none pointer-events-none"
-                style={{ width: 140, height: 'auto' }}
+                className="block select-none pointer-events-none max-w-none"
+                style={{ height: h * STICKER_UNIT * s.scale, width: 'auto' }}
               />
             );
           }
           return (
             <div
               key={s.uid}
-              onPointerDown={(e) => onPointerDown(e, s.uid)}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={onPointerUp}
+              data-uid={s.uid}
               style={{
                 position: 'absolute',
                 left: `${s.x * 100}%`,
                 top: `${s.y * 100}%`,
-                transform: `translate(-50%, -50%) rotate(${s.rotation}rad) scale(${s.scale})`,
-                touchAction: 'none',
+                transform: `translate(-50%, -50%) rotate(${s.rotation}rad)`,
                 cursor: 'grab',
               }}
-              className={isActive ? 'outline outline-1 outline-gold/80' : ''}
+              className={`p-2 rounded-sm ${isActive ? 'outline-dashed outline-2 outline-gold z-10' : ''}`}
             >
               {inner}
               {isActive && (
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeSticker(s.uid);
-                  }}
-                  className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-cream text-ink text-xs grid place-items-center border border-ink/30 before:absolute before:-inset-2.5 before:content-['']"
-                  aria-label="remove sticker"
-                >
-                  ×
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeSticker(s.uid);
+                    }}
+                    className="absolute -top-4 -left-4 w-8 h-8 rounded-full bg-cream text-ink text-base leading-none grid place-items-center border border-ink/30 shadow before:absolute before:-inset-1.5 before:content-['']"
+                    aria-label={`remove ${describeSticker(s)}`}
+                  >
+                    ×
+                  </button>
+                  <span
+                    data-handle={s.uid}
+                    aria-hidden
+                    className="absolute -bottom-4 -right-4 w-8 h-8 rounded-full bg-gold text-ink text-base leading-none grid place-items-center border border-cream shadow before:absolute before:-inset-1.5 before:content-['']"
+                    style={{ cursor: 'nwse-resize', touchAction: 'none' }}
+                  >
+                    ⤡
+                  </span>
+                </>
               )}
             </div>
           );
         })}
       </div>
+
+      {/* size / rotate controls for the selected sticker: a reliable
+          alternative to gestures, and the only way by keyboard */}
+      {active && (
+        <div
+          role="group"
+          aria-label={`adjust ${describeSticker(active)}`}
+          className="mt-3 rounded-sm border border-cream/15 bg-black/30 px-3 py-2 text-cream"
+        >
+          <div className="flex items-center gap-2">
+            <span className="w-12 shrink-0 text-[10px] uppercase tracking-widest text-cream/70">size</span>
+            <button
+              type="button"
+              onClick={() => update(active.uid, { scale: clampScale(active.scale / 1.15) })}
+              className="w-11 h-11 shrink-0 grid place-items-center rounded-full border border-cream/30 text-lg leading-none"
+              aria-label="smaller"
+            >
+              −
+            </button>
+            <input
+              type="range"
+              min={MIN_SCALE}
+              max={MAX_SCALE}
+              step={0.05}
+              value={active.scale}
+              onChange={(e) => update(active.uid, { scale: clampScale(Number(e.target.value)) })}
+              aria-label="size"
+              className="flex-1 min-w-0 h-11 accent-[#B8956A]"
+            />
+            <button
+              type="button"
+              onClick={() => update(active.uid, { scale: clampScale(active.scale * 1.15) })}
+              className="w-11 h-11 shrink-0 grid place-items-center rounded-full border border-cream/30 text-lg leading-none"
+              aria-label="bigger"
+            >
+              +
+            </button>
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="w-12 shrink-0 text-[10px] uppercase tracking-widest text-cream/70">rotate</span>
+            <button
+              type="button"
+              onClick={() => update(active.uid, { rotation: active.rotation - ROTATE_STEP })}
+              className="w-11 h-11 grid place-items-center rounded-full border border-cream/30 text-lg leading-none"
+              aria-label="rotate left"
+            >
+              ↺
+            </button>
+            <button
+              type="button"
+              onClick={() => update(active.uid, { rotation: active.rotation + ROTATE_STEP })}
+              className="w-11 h-11 grid place-items-center rounded-full border border-cream/30 text-lg leading-none"
+              aria-label="rotate right"
+            >
+              ↻
+            </button>
+            <button
+              type="button"
+              onClick={() => update(active.uid, { rotation: 0, scale: START_SCALE })}
+              className="min-h-11 px-2 text-[10px] uppercase tracking-widest text-cream/75 hover:text-cream"
+            >
+              reset
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveUid(null)}
+              className="ml-auto min-h-11 px-3 rounded-full bg-gold text-ink text-[10px] uppercase tracking-widest"
+            >
+              done
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Tray buttons + emoji input (always visible) */}
       <div className="mt-4 flex items-center justify-between gap-3">
@@ -345,9 +426,13 @@ export default function StickerEditor({ src, set, event, initial, onChange }: Pr
         onPick={addEmoji}
       />
 
-      <p className="mt-2 text-[10px] uppercase tracking-widest text-cream/65">
-        drag · pinch to resize · two fingers to rotate
-      </p>
+      {placed.length > 0 && (
+        <p className="mt-2 text-[10px] uppercase tracking-widest text-cream/65">
+          {active
+            ? 'drag to move · pinch anywhere on the photo, or drag ⤡, to resize & turn'
+            : 'tap a sticker to move, resize or turn it'}
+        </p>
+      )}
 
       {trayOpen && (
         <div className="mt-3 p-2 bg-black/40 rounded-sm">
