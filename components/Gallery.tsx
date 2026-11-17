@@ -441,9 +441,16 @@ export default function Gallery({
               type="button"
               onClick={() => (selecting ? exitSelect() : setSelecting(true))}
               aria-pressed={selecting}
-              className="min-h-11 text-[10px] uppercase tracking-widest text-ink/80 hover:text-ink"
+              className="min-h-11 flex items-center"
             >
-              <span className="border-b border-gold pb-0.5">{selecting ? 'cancel' : 'select'}</span>
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-widest leading-none transition-colors ${
+                  selecting ? 'bg-ink border-ink text-cream' : 'border-ink/25 text-ink/80 hover:text-ink'
+                }`}
+              >
+                <span aria-hidden>{selecting ? '×' : '✓'}</span>
+                {selecting ? 'cancel' : 'select'}
+              </span>
             </button>
           )
         }
@@ -581,14 +588,13 @@ function RefineBar({
   const [open, setOpen] = useState(false);
   const active = (refine.sort !== 'newest' ? 1 : 0) + (refine.guest !== ALL ? 1 : 0) + (refine.look !== ALL ? 1 : 0);
   return (
-    <div className="relative px-3 pt-2 border-b border-ink/10">
-      {trailing && <div className="absolute right-3 top-2">{trailing}</div>}
+    <div className="px-3 pt-2 border-b border-ink/10 grid grid-cols-[1fr_auto] items-start gap-x-3">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls="gallery-refine"
-        className="sm:hidden min-h-11 text-[10px] uppercase tracking-widest text-ink/80"
+        className="sm:hidden justify-self-start col-start-1 row-start-1 min-h-11 text-[10px] uppercase tracking-widest text-ink/80"
       >
         <span className="border-b border-gold pb-0.5">
           sort &amp; filter{active ? ` · ${active} on` : ''}
@@ -597,7 +603,7 @@ function RefineBar({
       </button>
       <div
         id="gallery-refine"
-        className={`${open ? 'grid' : 'hidden'} grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 pb-2 sm:flex sm:flex-wrap sm:gap-x-4 sm:pr-20`}
+        className={`${open ? 'grid' : 'hidden'} grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 pb-2 col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1 sm:flex sm:flex-wrap sm:gap-x-4`}
       >
       <label className="contents sm:flex sm:items-center sm:gap-2 text-[10px] uppercase tracking-widest text-ink/70">
         sort
@@ -654,6 +660,7 @@ function RefineBar({
         </div>
       )}
       </div>
+      {trailing && <div className="col-start-2 row-start-1 flex items-center min-h-11">{trailing}</div>}
     </div>
   );
 }
