@@ -117,3 +117,66 @@ export function saveMessage(r: SaveResult, kind: 'photo' | 'video'): string {
 export function fileFrom(blob: Blob, name: string): File {
   return new File([blob], name, { type: (blob.type || 'application/octet-stream').split(';')[0] });
 }
+
+export function isAndroid(): boolean {
+  return typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
+}
+
+export type Platform = 'ios' | 'android' | 'other';
+export function currentPlatform(): Platform {
+  return isIOS() ? 'ios' : isAndroid() ? 'android' : 'other';
+}
+
+/**
+ * What to tell the guest after "save to photos" in the gallery: did it
+ * work, and where on their phone to find it. `ok` drives the tick.
+ */
+export function saveOutcome(
+  r: SaveResult,
+  kind: 'photo' | 'video' | 'voice',
+  platform: Platform,
+): { ok: boolean; title: string; detail: string } {
+  const thing = kind === 'voice' ? 'voice note' : kind;
+  const saveWord = kind === 'photo' ? '“Save Image”' : '“Save Video”';
+  switch (r) {
+    case 'shared':
+      return kind === 'voice'
+        ? { ok: true, title: 'done', detail: 'if you chose “Save to Files” it’s in the Files app' }
+        : { ok: true, title: 'done', detail: `if you tapped ${saveWord}, it’s in Photos › Recents` };
+    case 'downloaded':
+      if (platform === 'android')
+        return kind === 'voice'
+          ? { ok: true, title: 'saved to your phone', detail: 'find it in Files › Downloads' }
+          : {
+              ok: true,
+              title: 'saved to your Gallery',
+              detail: 'Gallery app: “Download” album · Google Photos: Library › Download',
+            };
+      if (platform === 'ios')
+        return {
+          ok: true,
+          title: 'saved to Files',
+          detail:
+            kind === 'video'
+              ? 'this video’s format can’t go in Photos · it’s in Files › Downloads'
+              : 'it’s in Files › Downloads',
+        };
+      return { ok: true, title: 'downloaded', detail: 'it’s in your Downloads folder' };
+    case 'cancelled':
+      return {
+        ok: false,
+        title: 'not saved yet',
+        detail: platform === 'ios' && kind !== 'voice' ? `tap save again and choose ${saveWord}` : 'tap save to try again',
+      };
+    case 'needs-tap':
+      return { ok: false, title: 'ready', detail: `tap save once more to finish saving this ${thing}` };
+    case 'in-app':
+      return {
+        ok: false,
+        title: 'this app can’t save files',
+        detail: 'tap ⋮ › “Open in Chrome”, then save · or send it to yourself below',
+      };
+    default:
+      return { ok: false, title: 'that didn’t work', detail: 'check your connection and tap save again' };
+  }
+}

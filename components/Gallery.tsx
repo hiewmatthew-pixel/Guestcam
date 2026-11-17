@@ -4,7 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { labelForMediaType, tileImageUrl, type SubmissionRow } from '@/lib/supabase';
 import { listFavorites, toggleFavorite } from '@/lib/favorites';
 import { shareMedia, type ShareResult } from '@/lib/share';
-import { canShareFiles, fileFrom, saveMessage, saveToPhotos, shareCapture } from '@/lib/save-media';
+import {
+  canShareFiles,
+  currentPlatform,
+  downloadFile,
+  fileFrom,
+  saveMessage,
+  saveOutcome,
+  saveToPhotos,
+  shareCapture,
+  type SaveResult,
+} from '@/lib/save-media';
 import CommentThread from '@/components/CommentThread';
 import { extensionFor } from '@/lib/media';
 import { filterLabel } from '@/lib/filters';
@@ -175,6 +185,10 @@ export default function Gallery({
     [openIdx, filtered],
   );
 
+  // gallery "save to photos": which capture is saving, and how the last save went
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saved, setSaved] = useState<{ id: string; r: SaveResult } | null>(null);
+
   function flash(msg: string) {
     setToast(msg);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -243,13 +257,26 @@ export default function Gallery({
   // Save into the phone's photos (iPhone: share sheet → Save Image/Video;
   // Android: download, which Gallery / Photos picks up).
   async function onDownload(it: SubmissionRow) {
+    if (saving) return;
+    setSaving(it.id);
+    let r: SaveResult;
     try {
-      const r = await saveToPhotos(await fileFor(it));
-      const msg = r === 'shared' ? 'saved' : saveMessage(r, it.media_type === 'photo' ? 'photo' : 'video');
-      if (msg) flash(msg);
+      r = await saveToPhotos(await fileFor(it));
     } catch {
       // never bounce the guest to a new tab: say so and let them retry
-      flash('couldn’t save that one · please try again');
+      r = 'failed';
+    }
+    setSaving(null);
+    setSaved({ id: it.id, r });
+  }
+
+  // iPhone: keep a copy in the Files app instead of Photos
+  async function onSaveFile(it: SubmissionRow) {
+    try {
+      const r = downloadFile(await fileFor(it));
+      flash(r === 'downloaded' ? 'saved to Files › Downloads' : 'that didn’t work · please try again');
+    } catch {
+      flash('that didn’t work · please try again');
     }
   }
 
@@ -394,7 +421,12 @@ export default function Gallery({
           favourited={favs.has(open.id)}
           onFavourite={() => onToggleFav(open)}
           onShare={() => onShareFile(open)}
+          onShareLink={() => onShare(open)}
           onDownload={() => onDownload(open)}
+          onSaveFile={() => onSaveFile(open)}
+          saving={saving === open.id}
+          saveResult={saved?.id === open.id ? saved.r : null}
+          onDismissSave={() => setSaved(null)}
           eventId={ev}
           showComments={showComments}
         />
@@ -531,7 +563,12 @@ function Lightbox({
   favourited,
   onFavourite,
   onShare,
+  onShareLink,
   onDownload,
+  onSaveFile,
+  saving,
+  saveResult,
+  onDismissSave,
   eventId,
   showComments,
 }: {
@@ -543,7 +580,12 @@ function Lightbox({
   favourited: boolean;
   onFavourite: () => void;
   onShare: () => void;
+  onShareLink: () => void;
   onDownload: () => void;
+  onSaveFile: () => void;
+  saving: boolean;
+  saveResult: SaveResult | null;
+  onDismissSave: () => void;
   eventId: string;
   showComments: boolean;
 }) {
@@ -765,9 +807,18 @@ function Lightbox({
                   glyph={favourited ? '♥' : '♡'}
                 />
                 <ActionButton onClick={onShare} label="share" glyph="↗" />
-                <ActionButton onClick={onDownload} label="save" glyph="↓" />
               </div>
             </div>
+            <SaveBar
+              kind={item.media_type === 'photo' ? 'photo' : item.media_type === 'voice' ? 'voice' : 'video'}
+              saving={saving}
+              result={saveResult}
+              onSave={onDownload}
+              onShare={onShare}
+              onShareLink={onShareLink}
+              onSaveFile={onSaveFile}
+              onDismiss={onDismissSave}
+            />
           </div>
           {eventId && showComments && (
             <aside className="bg-cream/5 border border-cream/10 rounded-sm p-4 md:max-h-[80vh] md:overflow-y-auto">
@@ -978,6 +1029,98 @@ function TileIcon({
         {glyph}
       </span>
     </button>
+  );
+}
+
+// The main way to keep a capture: one tap puts it in the phone's photos
+// (iPhone: share sheet → Save Image/Video; Android: Gallery's Download
+// album). Once it's done, says where it went, then offers the rest.
+function SaveBar({
+  kind,
+  saving,
+  result,
+  onSave,
+  onShare,
+  onShareLink,
+  onSaveFile,
+  onDismiss,
+}: {
+  kind: 'photo' | 'video' | 'voice';
+  saving: boolean;
+  result: SaveResult | null;
+  onSave: () => void;
+  onShare: () => void;
+  onShareLink: () => void;
+  onSaveFile: () => void;
+  onDismiss: () => void;
+}) {
+  const [platform, setPlatform] = useState<'ios' | 'android' | 'other'>('other');
+  const [shareFiles, setShareFiles] = useState(false);
+  useEffect(() => {
+    setPlatform(currentPlatform());
+    setShareFiles(canShareFiles());
+  }, []);
+  const where = kind === 'voice' ? 'phone' : platform === 'other' ? 'device' : 'photos';
+  const hint =
+    kind === 'voice'
+      ? ''
+      : platform === 'ios'
+        ? `tap save, then ${kind === 'photo' ? '“Save Image”' : '“Save Video”'} · it goes straight to Photos`
+        : platform === 'android'
+          ? 'saves to your Gallery (“Download” album) and Google Photos'
+          : '';
+  const out = result ? saveOutcome(result, kind, platform) : null;
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={saving}
+        aria-describedby={hint ? 'save-hint' : undefined}
+        className="w-full min-h-12 flex items-center justify-center gap-2 rounded-full bg-gold text-ink text-xs uppercase tracking-widest font-medium px-6 py-3 transition-opacity hover:opacity-90 disabled:opacity-70"
+      >
+        <span aria-hidden className="text-base leading-none">
+          ↓
+        </span>
+        <span>{saving ? 'saving…' : `save to ${where}`}</span>
+      </button>
+      {hint && !out && (
+        <p id="save-hint" className="mt-2 text-center text-[11px] text-cream/65">
+          {hint}
+        </p>
+      )}
+      <div role="status" aria-live="polite">
+        {out && (
+          <div className="mt-3 rounded-sm border border-cream/15 bg-cream/5 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className={`text-sm ${out.ok ? 'text-gold' : 'text-cream'}`}>
+                  {out.ok && <span aria-hidden>✓ </span>}
+                  {out.title}
+                </p>
+                <p className="mt-1 text-xs text-cream/75">{out.detail}</p>
+              </div>
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="-mr-2 -mt-2 min-h-11 min-w-11 grid place-items-center text-cream/65 hover:text-cream"
+              >
+                <span aria-hidden>×</span>
+                <span className="sr-only">close save options</span>
+              </button>
+            </div>
+            <p className="mt-3 text-[10px] uppercase tracking-[0.3em] text-cream/55">more options</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {shareFiles && kind !== 'voice' && (
+                <ActionButton onClick={onShare} label="send to Messages, WhatsApp, Mail…" glyph="↗" />
+              )}
+              <ActionButton onClick={onShareLink} label="share link" glyph="⧉" />
+              {platform === 'ios' && <ActionButton onClick={onSaveFile} label="save to Files" glyph="▤" />}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
