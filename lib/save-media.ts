@@ -180,3 +180,62 @@ export function saveOutcome(
       return { ok: false, title: 'that didn’t work', detail: 'check your connection and tap save again' };
   }
 }
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Save several captures at once. iPhone: one share sheet ("Save N
+ * Images" puts them all in Photos); formats Photos can't hold go to
+ * Files. Android/desktop: one download each (Chrome asks once to allow
+ * multiple downloads), which Gallery / Google Photos pick up.
+ */
+export async function saveManyToPhotos(files: File[]): Promise<SaveResult> {
+  if (files.length === 0) return 'failed';
+  if (files.length === 1) return saveToPhotos(files[0]);
+  const nav = navigator as ShareNav;
+  const canShareAll = (fs: File[]) => {
+    try {
+      return fs.length > 0 && typeof nav.share === 'function' && !!nav.canShare?.({ files: fs });
+    } catch {
+      return false;
+    }
+  };
+  if (isIOS()) {
+    const photos = files.filter(photosCanHold);
+    if (canShareAll(photos)) {
+      const r = await openShareSheet({ files: photos });
+      if (r === 'shared') for (const f of files.filter((f) => !photosCanHold(f))) downloadFile(f);
+      return r;
+    }
+  }
+  if (isAndroidInAppBrowser()) return canShareAll(files) ? openShareSheet({ files }) : 'in-app';
+  let ok = 0;
+  for (const f of files) {
+    if (downloadFile(f) === 'downloaded') ok++;
+    // browsers drop downloads fired in the same instant
+    await wait(350);
+  }
+  return ok > 0 ? 'downloaded' : 'failed';
+}
+
+/** One-line toast after saving `n` captures from the gallery. */
+export function saveManyMessage(r: SaveResult, n: number, platform: Platform): string {
+  switch (r) {
+    case 'shared':
+      return platform === 'ios' ? 'done · if you tapped “Save”, they’re in Photos › Recents' : 'done';
+    case 'downloaded':
+      return platform === 'android'
+        ? `${n} saved · Gallery “Download” album · Google Photos › Library › Download`
+        : platform === 'ios'
+          ? `${n} saved to Files › Downloads`
+          : `${n} downloaded · check your Downloads folder`;
+    case 'cancelled':
+      return platform === 'ios' ? 'not saved yet · tap save again and choose “Save Images”' : 'not saved yet';
+    case 'needs-tap':
+      return 'ready · tap save once more';
+    case 'in-app':
+      return 'this app can’t save files · tap ⋮ › “Open in Chrome”, then save';
+    default:
+      return 'that didn’t work · please try again';
+  }
+}

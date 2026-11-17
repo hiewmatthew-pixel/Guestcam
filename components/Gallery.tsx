@@ -10,6 +10,8 @@ import {
   downloadFile,
   fileFrom,
   saveMessage,
+  saveManyMessage,
+  saveManyToPhotos,
   saveOutcome,
   saveToPhotos,
   shareCapture,
@@ -57,6 +59,8 @@ const TAB_LABELS: Record<Filter, string> = {
   pending: 'pending',
 };
 
+const MAX_SELECT = 30;
+
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), audio[controls], video[controls], [tabindex]:not([tabindex="-1"])';
 
@@ -87,6 +91,11 @@ export default function Gallery({
   const toastTimer = useRef<number | null>(null);
   // downloaded originals, so a second tap (or share after save) is instant
   const fileCache = useRef(new Map<string, File>());
+  // "select a few" mode: pick captures, then save them together
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [ready, setReady] = useState<Set<string>>(new Set());
+  const [savingMany, setSavingMany] = useState(false);
 
   useEffect(() => {
     if (ev) setFavs(listFavorites(ev));
@@ -189,10 +198,68 @@ export default function Gallery({
   const [saving, setSaving] = useState<string | null>(null);
   const [saved, setSaved] = useState<{ id: string; r: SaveResult } | null>(null);
 
-  function flash(msg: string) {
+  function flash(msg: string, ms = 1800) {
     setToast(msg);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 1800) as unknown as number;
+    toastTimer.current = window.setTimeout(() => setToast(null), ms) as unknown as number;
+  }
+
+  // ↓ on a tile: save straight away without opening the capture
+  async function onTileSave(it: SubmissionRow) {
+    if (saving) return;
+    setSaving(it.id);
+    if (!fileCache.current.has(it.id)) flash('getting it ready…', 8000);
+    let r: SaveResult;
+    try {
+      r = await saveToPhotos(await fileFor(it));
+    } catch {
+      r = 'failed';
+    }
+    setSaving(null);
+    const kind = it.media_type === 'photo' ? 'photo' : it.media_type === 'voice' ? 'voice' : 'video';
+    const o = saveOutcome(r, kind, currentPlatform());
+    flash(`${o.ok ? '✓ ' : ''}${o.title} · ${o.detail}`, 5000);
+  }
+
+  // phones only open the share sheet straight from a tap, so each picked
+  // capture is fetched as it's picked; save unlocks once all are ready
+  function toggleSelect(it: SubmissionRow) {
+    setSelected((cur) => {
+      if (cur.includes(it.id)) return cur.filter((id) => id !== it.id);
+      if (cur.length >= MAX_SELECT) {
+        flash(`up to ${MAX_SELECT} at a time`);
+        return cur;
+      }
+      return [...cur, it.id];
+    });
+    if (!fileCache.current.has(it.id)) {
+      void fileFor(it)
+        .then(() => setReady((r) => new Set(r).add(it.id)))
+        .catch(() => {
+          setSelected((cur) => cur.filter((id) => id !== it.id));
+          flash('couldn’t load one of those · please pick it again');
+        });
+    }
+  }
+
+  function exitSelect() {
+    setSelecting(false);
+    setSelected([]);
+  }
+
+  async function onSaveSelected() {
+    const files = selected.map((id) => fileCache.current.get(id)).filter((f): f is File => !!f);
+    if (files.length === 0 || files.length < selected.length || savingMany) return;
+    setSavingMany(true);
+    let r: SaveResult;
+    try {
+      r = await saveManyToPhotos(files);
+    } catch {
+      r = 'failed';
+    }
+    setSavingMany(false);
+    flash(saveManyMessage(r, files.length, currentPlatform()), 5000);
+    if (r === 'shared' || r === 'downloaded') exitSelect();
   }
 
   function onToggleFav(it: SubmissionRow) {
@@ -249,7 +316,7 @@ export default function Gallery({
       blob = await res.blob();
     }
     const who = it.guest_name ? `-${it.guest_name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}` : '';
-    const file = fileFrom(blob, `glancecam-${it.media_type}${who}.${extensionFor(it)}`);
+    const file = fileFrom(blob, `glancecam-${it.media_type}${who}-${it.id.slice(0, 6)}.${extensionFor(it)}`);
     fileCache.current.set(it.id, file);
     return file;
   }
@@ -368,7 +435,22 @@ export default function Gallery({
         looks={looks}
         shown={filtered.length}
         total={tabbed.length}
+        trailing={
+          filtered.length > 0 && (
+            <button
+              type="button"
+              onClick={() => (selecting ? exitSelect() : setSelecting(true))}
+              aria-pressed={selecting}
+              className="min-h-11 text-[10px] uppercase tracking-widest text-ink/80 hover:text-ink"
+            >
+              <span className="border-b border-gold pb-0.5">{selecting ? 'cancel' : 'select'}</span>
+            </button>
+          )
+        }
       />
+      {selecting && (
+        <p className="px-3 pt-2 text-[11px] text-ink/70">tap the captures you’d like to save</p>
+      )}
 
       {/* Empty state for the active filter */}
       {tabbed.length > 0 && filtered.length === 0 ? (
@@ -394,15 +476,19 @@ export default function Gallery({
           </p>
         </div>
       ) : (
-        <div className="columns-2 sm:columns-3 md:columns-4 xl:columns-5 2xl:columns-6 gap-3 px-3 pt-3 max-w-[2200px] mx-auto">
+        <div className={`columns-2 sm:columns-3 md:columns-4 xl:columns-5 2xl:columns-6 gap-3 px-3 pt-3 max-w-[2200px] mx-auto ${selecting ? 'pb-44' : ''}`}>
           {filtered.map((it) => (
             <Tile
               key={it.id}
               item={it}
-              onOpen={() => openItem(it)}
+              onOpen={() => (selecting ? toggleSelect(it) : openItem(it))}
               favourited={favs.has(it.id)}
               onFavourite={() => onToggleFav(it)}
               onShare={() => onShare(it)}
+              onSave={() => onTileSave(it)}
+              saving={saving === it.id}
+              selecting={selecting}
+              selected={selected.includes(it.id)}
               canModerate={canModerate}
               onApprove={() => onModerate(it, true)}
               onHide={() => onModerate(it, false)}
@@ -432,15 +518,32 @@ export default function Gallery({
         />
       )}
 
+      {selecting && (
+        <SelectBar
+          count={selected.length}
+          readyCount={selected.filter((id) => ready.has(id) || fileCache.current.has(id)).length}
+          saving={savingMany}
+          canSelectAll={filtered.length > selected.length && selected.length < MAX_SELECT}
+          onSelectAll={() =>
+            filtered
+              .filter((it) => !selected.includes(it.id))
+              .slice(0, MAX_SELECT - selected.length)
+              .forEach(toggleSelect)
+          }
+          onSave={onSaveSelected}
+          onCancel={exitSelect}
+        />
+      )}
+
       {/* Toast — a polite live region that stays mounted so screen
           readers announce each message */}
       <div
         role="status"
         aria-live="polite"
-        className="fixed bottom-6 inset-x-0 z-[60] flex justify-center pointer-events-none"
+        className={`fixed ${selecting ? 'bottom-36' : 'bottom-6'} inset-x-0 z-[60] flex justify-center px-4 pointer-events-none`}
       >
         {toast && (
-          <div className="bg-ink text-cream text-[10px] uppercase tracking-widest px-4 py-2 rounded-full shadow-lg">
+          <div className="max-w-md text-center bg-ink text-cream text-[10px] uppercase tracking-widest leading-relaxed px-4 py-2 rounded-2xl shadow-lg">
             {toast}
           </div>
         )}
@@ -461,7 +564,9 @@ function RefineBar({
   looks,
   shown,
   total,
+  trailing,
 }: {
+  trailing?: React.ReactNode;
   refine: Refine;
   onChange: (r: Refine) => void;
   guests: { key: string; label: string; count: number }[];
@@ -476,7 +581,8 @@ function RefineBar({
   const [open, setOpen] = useState(false);
   const active = (refine.sort !== 'newest' ? 1 : 0) + (refine.guest !== ALL ? 1 : 0) + (refine.look !== ALL ? 1 : 0);
   return (
-    <div className="px-3 pt-2 border-b border-ink/10">
+    <div className="relative px-3 pt-2 border-b border-ink/10">
+      {trailing && <div className="absolute right-3 top-2">{trailing}</div>}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -491,7 +597,7 @@ function RefineBar({
       </button>
       <div
         id="gallery-refine"
-        className={`${open ? 'grid' : 'hidden'} grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 pb-2 sm:flex sm:flex-wrap sm:gap-x-4`}
+        className={`${open ? 'grid' : 'hidden'} grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 pb-2 sm:flex sm:flex-wrap sm:gap-x-4 sm:pr-20`}
       >
       <label className="contents sm:flex sm:items-center sm:gap-2 text-[10px] uppercase tracking-widest text-ink/70">
         sort
@@ -839,6 +945,10 @@ function Tile({
   favourited,
   onFavourite,
   onShare,
+  onSave,
+  saving = false,
+  selecting = false,
+  selected = false,
   canModerate = false,
   onApprove,
   onHide,
@@ -848,15 +958,29 @@ function Tile({
   favourited: boolean;
   onFavourite: () => void;
   onShare: () => void;
+  onSave: () => void;
+  saving?: boolean;
+  selecting?: boolean;
+  selected?: boolean;
   canModerate?: boolean;
   onApprove?: () => void;
   onHide?: () => void;
 }) {
   const isPending = !item.approved;
   return (
-    <div className="mb-3 group relative overflow-hidden rounded-sm bg-warm-gray-light/40 break-inside-avoid">
-      {/* the button is named by its content: "open <type> by <guest>" */}
-      <button type="button" onClick={onOpen} className="block w-full text-left">
+    <div
+      className={`mb-3 group relative overflow-hidden rounded-sm bg-warm-gray-light/40 break-inside-avoid ${
+        selected ? 'ring-4 ring-gold' : ''
+      }`}
+    >
+      {/* the button is named by its content: "open <type> by <guest>"
+          (or "select …" while picking several) */}
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-pressed={selecting ? selected : undefined}
+        className="block w-full text-left"
+      >
         <div className="relative">
           {item.media_type === 'photo' ? (
             // decorative here — the button's text already names the capture
@@ -898,7 +1022,17 @@ function Tile({
               {labelFor(item.media_type)}
             </span>
           )}
-          {isPending && (
+          {selecting && (
+            <span
+              aria-hidden
+              className={`absolute top-2 right-2 w-7 h-7 grid place-items-center rounded-full border-2 text-sm ${
+                selected ? 'bg-gold border-gold text-ink' : 'bg-ink/30 border-cream text-transparent'
+              }`}
+            >
+              ✓
+            </span>
+          )}
+          {isPending && !selecting && (
             <span className="absolute top-2 right-2 text-[10px] uppercase tracking-widest text-ink bg-gold px-1.5 py-0.5 rounded-sm">
               pending
             </span>
@@ -908,7 +1042,9 @@ function Tile({
         {/* attribution bar (always visible — that was the request) */}
         <div className="flex items-center justify-between px-2 py-2 gap-2">
           <span className="text-[11px] tracking-wider text-ink/75 truncate">
-            <span className="sr-only">open {labelFor(item.media_type)} by </span>
+            <span className="sr-only">
+              {selecting ? 'select' : 'open'} {labelFor(item.media_type)} by{' '}
+            </span>
             <span aria-hidden className="text-ink/70">
               —{' '}
             </span>
@@ -918,6 +1054,7 @@ function Tile({
       </button>
 
       {/* tile actions — 44px hit areas around 32px visual chips */}
+      {!selecting && (
       <div className="absolute bottom-7 right-0.5 flex">
         {canModerate && isPending && onApprove && (
           <TileIcon onClick={onApprove} label={`approve ${describe(item)}`} glyph="✓" active />
@@ -933,6 +1070,87 @@ function Tile({
           glyph={favourited ? '♥' : '♡'}
         />
         <TileIcon onClick={onShare} label={`share ${describe(item)}`} glyph="↗" />
+        <TileIcon
+          onClick={onSave}
+          label={`save ${describe(item)} to your ${item.media_type === 'voice' ? 'phone' : 'photos'}`}
+          glyph={saving ? '…' : '↓'}
+        />
+      </div>
+      )}
+    </div>
+  );
+}
+
+// Bottom bar while picking several captures to save together.
+function SelectBar({
+  count,
+  readyCount,
+  saving,
+  canSelectAll,
+  onSelectAll,
+  onSave,
+  onCancel,
+}: {
+  count: number;
+  readyCount: number;
+  saving: boolean;
+  canSelectAll: boolean;
+  onSelectAll: () => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const [platform, setPlatform] = useState<'ios' | 'android' | 'other'>('other');
+  useEffect(() => setPlatform(currentPlatform()), []);
+  const preparing = readyCount < count;
+  const label =
+    count === 0
+      ? 'pick some to save'
+      : saving
+        ? 'saving…'
+        : preparing
+          ? `getting ready… ${readyCount}/${count}`
+          : `save ${count} to ${platform === 'other' ? 'device' : 'photos'}`;
+  return (
+    <div
+      role="region"
+      aria-label="save selected"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-cream/10 bg-ink text-cream px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.15)]"
+    >
+      <div className="mx-auto max-w-xl">
+        <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-widest">
+          <span role="status" aria-live="polite" className="text-cream/80">
+            {count} selected
+          </span>
+          <div className="flex items-center gap-1">
+            {canSelectAll && (
+              <button type="button" onClick={onSelectAll} className="min-h-11 px-2 uppercase tracking-widest text-cream/80 hover:text-cream">
+                select all
+              </button>
+            )}
+            <button type="button" onClick={onCancel} className="min-h-11 px-2 uppercase tracking-widest text-cream/80 hover:text-cream">
+              cancel
+            </button>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={count === 0 || preparing || saving}
+          className="mt-1 w-full min-h-12 flex items-center justify-center gap-2 rounded-full bg-gold text-ink text-xs uppercase tracking-widest font-medium px-6 py-3 disabled:opacity-60"
+        >
+          <span aria-hidden className="text-base leading-none">
+            ↓
+          </span>
+          <span>{label}</span>
+        </button>
+        {platform === 'ios' && count > 1 && !preparing && (
+          <p className="mt-2 text-center text-[11px] text-cream/65">then tap “Save {count} Images” (or Items)</p>
+        )}
+        {platform === 'android' && count > 1 && (
+          <p className="mt-2 text-center text-[11px] text-cream/65">
+            if Chrome asks, allow multiple downloads · they go to Gallery’s “Download” album
+          </p>
+        )}
       </div>
     </div>
   );
