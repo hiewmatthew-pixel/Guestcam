@@ -13,6 +13,8 @@ export function getSupabase(): SupabaseClient | null {
     _client = createClient(url!, key!, {
       auth: { persistSession: false },
       realtime: { params: { eventsPerSecond: 5 } },
+      // always read live data (Next.js would otherwise cache server reads)
+      global: { fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }) },
     });
   }
   return _client;

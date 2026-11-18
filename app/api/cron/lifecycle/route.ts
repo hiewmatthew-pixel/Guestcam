@@ -4,6 +4,7 @@ import { isCronAuthorized } from '../_auth';
 
 // Daily (vercel.json): permanently delete events past their tier's retention.
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 export const maxDuration = 300;
 
 export async function GET(req: Request) {

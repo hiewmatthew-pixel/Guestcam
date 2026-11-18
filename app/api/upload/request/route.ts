@@ -2,6 +2,7 @@ import { requestUpload } from '@/lib/guest-writes';
 import { clientIp, json, readJson } from '../_shared';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 export async function POST(req: Request) {
   const body = await readJson(req);

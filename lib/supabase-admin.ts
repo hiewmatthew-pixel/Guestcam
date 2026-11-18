@@ -13,11 +13,17 @@ export const isSupabaseAdminConfigured = Boolean(url && serviceKey);
 
 let _admin: SupabaseClient | null = null;
 
+export const noStoreFetch: typeof fetch = (input, init) => fetch(input, { ...init, cache: 'no-store' });
+
 export function getSupabaseAdmin(): SupabaseClient | null {
   if (!isSupabaseAdminConfigured) return null;
   if (!_admin) {
     _admin = createClient(url!, serviceKey!, {
       auth: { persistSession: false, autoRefreshToken: false },
+      // Never let Next.js cache these calls: a cached "which captures
+      // still need backing up?" answer once made the backup re-copy every
+      // file in a loop (hundreds of GB of storage egress).
+      global: { fetch: noStoreFetch },
     });
   }
   return _admin;

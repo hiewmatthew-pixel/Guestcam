@@ -39,6 +39,7 @@ export async function runBackup(budgetMs: number): Promise<{ copied: number; fai
   let copied = 0;
   let failed = 0;
   const skip = new Set<string>(); // failed this run: don't spin on them
+  const done = new Set<string>(); // copied this run
 
   while (Date.now() < deadline) {
     const { data, error } = await sb
@@ -48,7 +49,15 @@ export async function runBackup(budgetMs: number): Promise<{ copied: number; fai
       .order('created_at', { ascending: true })
       .limit(40);
     if (error) throw new Error('could not list submissions');
-    const rows = ((data ?? []) as { id: string; media_url: string }[]).filter((r) => !skip.has(r.id));
+    const listed = (data ?? []) as { id: string; media_url: string }[];
+    // A row we already copied this run coming back means the "not backed
+    // up" list is stale or the stamp didn't save: stop rather than
+    // re-download the same files over and over.
+    if (listed.some((r) => done.has(r.id))) {
+      console.warn('[backup] list returned already-copied rows; stopping this run');
+      return { copied, failed, remaining: true };
+    }
+    const rows = listed.filter((r) => !skip.has(r.id));
     if (rows.length === 0) return { copied, failed, remaining: false };
 
     // a few at a time: videos are up to 30 MB each
@@ -67,7 +76,12 @@ export async function runBackup(budgetMs: number): Promise<{ copied: number; fai
               addRandomSuffix: false,
               multipart: file.size > 8 * 1024 * 1024,
             });
-            await sb.from('submissions').update({ backed_up_at: new Date().toISOString() }).eq('id', row.id);
+            const { error: stampErr } = await sb
+              .from('submissions')
+              .update({ backed_up_at: new Date().toISOString() })
+              .eq('id', row.id);
+            if (stampErr) throw new Error('could not mark as backed up');
+            done.add(row.id);
             copied++;
           } catch {
             skip.add(row.id);
