@@ -31,6 +31,9 @@ function storagePath(mediaUrl: string): string | null {
 const backupPath = (path: string) => `${BUCKET}/${path}`;
 
 /** Copy not-yet-backed-up captures to Blob until the time budget runs out. */
+/** One backup run never downloads more than this (a busy wedding is well under it). */
+export const MAX_BACKUP_BYTES_PER_RUN = 3 * 1024 ** 3; // 3 GB
+
 export async function runBackup(budgetMs: number): Promise<{ copied: number; failed: number; remaining: boolean }> {
   const sb = getSupabaseAdmin();
   if (!sb || !isBackupConfigured) throw new Error('backup not configured');
@@ -40,6 +43,8 @@ export async function runBackup(budgetMs: number): Promise<{ copied: number; fai
   let failed = 0;
   const skip = new Set<string>(); // failed this run: don't spin on them
   const done = new Set<string>(); // copied this run
+  // hard ceiling on what one run may download, whatever goes wrong
+  let bytes = 0;
 
   while (Date.now() < deadline) {
     const { data, error } = await sb
@@ -59,6 +64,10 @@ export async function runBackup(budgetMs: number): Promise<{ copied: number; fai
     }
     const rows = listed.filter((r) => !skip.has(r.id));
     if (rows.length === 0) return { copied, failed, remaining: false };
+    if (bytes >= MAX_BACKUP_BYTES_PER_RUN) {
+      console.warn('[backup] per-run download limit reached; the rest waits for the next run');
+      return { copied, failed, remaining: true };
+    }
 
     // a few at a time: videos are up to 30 MB each
     for (let i = 0; i < rows.length && Date.now() < deadline; i += 4) {
@@ -69,6 +78,7 @@ export async function runBackup(budgetMs: number): Promise<{ copied: number; fai
             if (!path) throw new Error('not a storage url');
             const { data: file, error: dlErr } = await storage.download(path);
             if (dlErr || !file) throw new Error('download failed');
+            bytes += file.size;
             await put(backupPath(path), file, {
               access: 'private',
               contentType: file.type || undefined,
